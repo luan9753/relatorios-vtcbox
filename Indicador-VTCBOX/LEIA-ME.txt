@@ -1,0 +1,32 @@
+INDICADOR VTCBOX 130L
+=====================
+
+Pasta: Relatorios - Caixa Nova\Indicador-VTCBOX
+
+COMO ATUALIZAR E ABRIR
+----------------------
+1. Duplo clique em: ATUALIZAR_INDICADOR.bat
+2. O script consulta o banco Aura (ODBC AuraVTC) e gera o indicador.html
+3. O navegador abre automaticamente
+
+COMO SÓ VER (sem atualizar)
+-------------------------
+Duplo clique em: indicador.html
+
+ARQUIVOS
+--------
+ATUALIZAR_INDICADOR.bat  -> Atualiza do banco e abre no navegador
+gerar_indicador.ps1      -> Script que busca os dados e gera o HTML
+indicador.html           -> Painel visual (gerado automaticamente)
+
+REQUISITOS
+----------
+- ODBC AuraVTC configurado no Windows
+- PowerShell (ja vem no Windows)
+
+DADOS
+-----
+Fonte: vtc_stage.documentos
+Embalagem: CAIXA VTCBOX 130L WEDGE SEAL COM BERCO
+Entregue = data de entrega preenchida
+Em rota = sem data de entrega

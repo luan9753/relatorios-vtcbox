@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Indicador VTCBOX 130L</title>
+  <style>
+    :root {
+      --bg: #0b0f14;
+      --card: #141b24;
+      --card-hover: #1a2430;
+      --ink: #e8eef5;
+      --muted: #8fa3bc;
+      --line: #243044;
+      --blue: #60a5fa;
+      --green: #4ade80;
+      --green-bg: #14532d;
+      --green-head: #166534;
+      --orange: #fb923c;
+      --orange-bg: #7c2d12;
+      --orange-head: #9a3412;
+      --shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.45;
+    }
+    .wrap { max-width: 1280px; margin: 0 auto; padding: 20px; }
+    .hero {
+      background: linear-gradient(135deg, #0f2744 0%, #1e3a5f 45%, #0c4a6e 100%);
+      color: #fff;
+      border-radius: 18px;
+      padding: 28px 30px;
+      box-shadow: var(--shadow);
+      border: 1px solid #2d4a6f;
+      margin-bottom: 22px;
+    }
+    .hero h1 { margin: 0 0 8px; font-size: 2rem; font-weight: 800; letter-spacing: -0.02em; }
+    .hero .sub { opacity: 0.92; font-size: 1rem; }
+    .hero .meta { margin-top: 14px; font-size: 0.9rem; opacity: 0.85; }
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 22px;
+    }
+    .kpi {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 22px 20px;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--line);
+    }
+    .kpi .lbl {
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+    }
+    .kpi .val {
+      font-size: 2.6rem;
+      font-weight: 800;
+      line-height: 1.1;
+      margin-top: 8px;
+      letter-spacing: -0.03em;
+    }
+    .kpi .hint { font-size: 0.88rem; color: var(--muted); margin-top: 6px; }
+    .kpi.ok .val { color: var(--green); }
+    .kpi.warn .val { color: var(--orange); }
+    .kpi.blue .val { color: var(--blue); }
+    .progress-block {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 22px 24px;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--line);
+      margin-bottom: 22px;
+    }
+    .progress-block h2 { margin: 0 0 16px; font-size: 1.1rem; color: var(--ink); }
+    .bar-row { margin-bottom: 14px; }
+    .bar-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.92rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .bar-track {
+      height: 22px;
+      background: #1e293b;
+      border-radius: 999px;
+      overflow: hidden;
+      display: flex;
+      border: 1px solid var(--line);
+    }
+    .bar-fill-green { background: var(--green); height: 100%; }
+    .bar-fill-orange { background: var(--orange); height: 100%; }
+    .split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin-bottom: 22px;
+    }
+    @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
+    .panel {
+      background: var(--card);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--line);
+      overflow: hidden;
+    }
+    .panel-head {
+      padding: 16px 20px;
+      font-size: 1.15rem;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .panel-head.ok { background: var(--green-head); color: #dcfce7; }
+    .panel-head.warn { background: var(--orange-head); color: #ffedd5; }
+    .panel-head.uf { background: #1e3a5f; color: #bfdbfe; }
+    .badge {
+      font-size: 0.85rem;
+      font-weight: 700;
+      padding: 4px 12px;
+      border-radius: 999px;
+      background: rgba(0,0,0,0.35);
+      color: #fff;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+    th, td { padding: 11px 16px; text-align: left; border-bottom: 1px solid var(--line); }
+    th {
+      background: #0f172a;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      position: sticky;
+      top: 0;
+    }
+    tr:hover td { background: var(--card-hover); }
+    .table-wrap { max-height: 480px; overflow: auto; }
+    .uf-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 12px;
+      padding: 16px;
+    }
+    .uf-card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+      text-align: center;
+      background: #0f172a;
+    }
+    .uf-card .uf { font-size: 1.4rem; font-weight: 800; color: var(--ink); }
+    .uf-card .nums { font-size: 0.82rem; color: var(--muted); margin-top: 6px; }
+    .uf-card .nums strong { color: var(--ink); }
+    .uf-card .ent { color: var(--green); }
+    .uf-card .rota { color: var(--orange); }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+    .toolbar input {
+      flex: 1;
+      min-width: 220px;
+      padding: 12px 16px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      font-size: 1rem;
+      background: var(--card);
+      color: var(--ink);
+    }
+    .toolbar input::placeholder { color: var(--muted); }
+    .footer { text-align: center; color: var(--muted); font-size: 0.82rem; padding: 20px 0 8px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="hero">
+      <h1 id="titulo">Indicador VTCBOX 130L</h1>
+      <div class="sub" id="embalagem"></div>
+      <div class="meta">Atualizado: <strong id="atualizado"></strong> Â· Fonte: <span id="fonte"></span></div>
+    </header>
+
+    <section class="kpis" id="kpis"></section>
+
+    <section class="progress-block">
+      <h2>Progresso geral</h2>
+      <div class="bar-row">
+        <div class="bar-label"><span>Pedidos entregues</span><span id="pct-ped"></span></div>
+        <div class="bar-track"><div class="bar-fill-green" id="bar-ped-ok"></div><div class="bar-fill-orange" id="bar-ped-rota"></div></div>
+      </div>
+      <div class="bar-row">
+        <div class="bar-label"><span>LPNs entregues</span><span id="pct-lpn"></span></div>
+        <div class="bar-track"><div class="bar-fill-green" id="bar-lpn-ok"></div><div class="bar-fill-orange" id="bar-lpn-rota"></div></div>
+      </div>
+    </section>
+
+    <section class="panel" style="margin-bottom:22px">
+      <div class="panel-head uf">Resumo por UF</div>
+      <div class="uf-grid" id="uf-grid"></div>
+    </section>
+
+    <div class="toolbar">
+      <input type="search" id="busca" placeholder="Buscar pedido ou UF..." />
+    </div>
+
+    <section class="split">
+      <div class="panel">
+        <div class="panel-head ok">ENTREGUES <span class="badge" id="cnt-ent"></span></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>UF</th><th>Pedido</th><th>LPNs</th><th>Coleta</th></tr></thead>
+            <tbody id="tb-ent"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head warn">EM ROTA <span class="badge" id="cnt-rota"></span></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>UF</th><th>Pedido</th><th>LPNs</th><th>Coleta</th></tr></thead>
+            <tbody id="tb-rota"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <div class="footer">1 volume = 1 LPN distinta Â· Entregue = data de entrega preenchida</div>
+  </div>
+  <script>
+    const DATA = {"meta":{"titulo":"Indicador VTCBOX 130L","embalagem":"CAIXA VTCBOX 130L WEDGE SEAL COM BERÇO","atualizado_em":"08/06/2026 12:41:17","fonte":"vtc_stage.documentos (Aura)"},"resumo":{"pedidos_total":40,"pedidos_entregues":11,"pedidos_em_rota":29,"lpns_total":251,"lpns_entregues":121,"lpns_em_rota":130,"ufs":21},"por_uf":[{"uf":"AC","pedidos":2,"pedidos_entregues":0,"pedidos_em_rota":2,"lpns":9},{"uf":"AM","pedidos":1,"pedidos_entregues":0,"pedidos_em_rota":1,"lpns":1},{"uf":"AP","pedidos":3,"pedidos_entregues":1,"pedidos_em_rota":2,"lpns":11},{"uf":"BA","pedidos":3,"pedidos_entregues":0,"pedidos_em_rota":3,"lpns":9},{"uf":"ES","pedidos":1,"pedidos_entregues":1,"pedidos_em_rota":0,"lpns":32},{"uf":"GO","pedidos":2,"pedidos_entregues":0,"pedidos_em_rota":2,"lpns":19},{"uf":"MS","pedidos":2,"pedidos_entregues":0,"pedidos_em_rota":2,"lpns":2},{"uf":"MT","pedidos":2,"pedidos_entregues":0,"pedidos_em_rota":2,"lpns":2},{"uf":"PA","pedidos":3,"pedidos_entregues":1,"pedidos_em_rota":2,"lpns":5},{"uf":"PB","pedidos":1,"pedidos_entregues":0,"pedidos_em_rota":1,"lpns":1},{"uf":"PE","pedidos":2,"pedidos_entregues":1,"pedidos_em_rota":1,"lpns":2},{"uf":"PR","pedidos":2,"pedidos_entregues":0,"pedidos_em_rota":2,"lpns":3},{"uf":"RJ","pedidos":2,"pedidos_entregues":1,"pedidos_em_rota":1,"lpns":2},{"uf":"RN","pedidos":2,"pedidos_entregues":2,"pedidos_em_rota":0,"lpns":14},{"uf":"RO","pedidos":3,"pedidos_entregues":0,"pedidos_em_rota":3,"lpns":20},{"uf":"RR","pedidos":1,"pedidos_entregues":0,"pedidos_em_rota":1,"lpns":7},{"uf":"RS","pedidos":1,"pedidos_entregues":0,"pedidos_em_rota":1,"lpns":1},{"uf":"SC","pedidos":1,"pedidos_entregues":1,"pedidos_em_rota":0,"lpns":64},{"uf":"SE","pedidos":3,"pedidos_entregues":1,"pedidos_em_rota":2,"lpns":28},{"uf":"SP","pedidos":1,"pedidos_entregues":1,"pedidos_em_rota":0,"lpns":3},{"uf":"TO","pedidos":2,"pedidos_entregues":1,"pedidos_em_rota":1,"lpns":16}],"entregues":[{"pedido":"555895","uf":"AP","lpns":2,"lpns_entregues":2,"lpns_em_rota":0,"status":"ENTREGUE","primeira_coleta":"01/06/2026 22:09","ultima_coleta":"01/06/2026 22:09"},{"pedido":"556142","uf":"ES","lpns":32,"lpns_entregues":32,"lpns_em_rota":0,"status":"ENTREGUE","primeira_coleta":"01/06/2026 23:33","ultima_coleta":"01/06/2026 23:33"},{"pedido":"556084","uf":"PA","lpns":1,"lpns_entregues":1,"lpns_em_rota":0,"status":"ENTREGUE","primeira_coleta":"01/06/2026 22:17","ultima_coleta":"01/06/2026 22:17"},{"pedido":"556187","uf":"PE","lpns":1,"lpns_entregues":1,"lpns_em_rota":0,"status":"ENTREGUE","primeira_coleta":"02/06/2026 21:57","ultima_coleta":"02/06/2026 21:57"},{"pedido":"20260717","uf":"RJ","lpns":1,"lpns_entregues":1,"lpns_em_rota":0,"status":"ENTREGUE","primeira_coleta":"02/06/2026 01:14","ultima_coleta":"02/06/2026 01:14"},{"pedido":"556294","uf":"RN","lpns":12,"lpns_entregues":12,"lpns_em_rota":0,"status":"ENTREGUE","primeira_coleta":"02/06/2026 13:37","ultima_coleta":"02/06/2026 13:37"},{"pedido":"556083","uf":"RN","lpns":2,"lpns_entregues":2,"lpns_em_rota":0,"status":"ENTREGUE","primeira_coleta":"01/06/2026 22:05","ultima_coleta":"01/06/2026 22:05"},{"pedido":"556160","uf":"SC","lpns":64,"lpns_entregues":64,"lpns_em_rota":0,"status":"ENTREGUE","primeira_coleta":"06/06/2026 11:33","ultima_coleta":"06/06/2026 11:33"},{"pedido":"555932","uf":"SE","lpns":2,"lpns_entregues":2,"lpns_em_rota":0,"status":"ENTREGUE","primeira_coleta":"01/06/2026 22:18","ultima_coleta":"01/06/2026 22:18"},{"pedido":"556176","uf":"SP","lpns":3,"lpns_entregues":3,"lpns_em_rota":0,"status":"ENTREGUE","primeira_coleta":"03/06/2026 01:17","ultima_coleta":"03/06/2026 01:17"},{"pedido":"555916","uf":"TO","lpns":1,"lpns_entregues":1,"lpns_em_rota":0,"status":"ENTREGUE","primeira_coleta":"01/06/2026 22:21","ultima_coleta":"01/06/2026 22:21"}],"em_rota":[{"pedido":"556134","uf":"AC","lpns":7,"lpns_entregues":0,"lpns_em_rota":7,"status":"EM ROTA","primeira_coleta":"06/06/2026 05:04","ultima_coleta":"06/06/2026 05:04"},{"pedido":"556260","uf":"AC","lpns":2,"lpns_entregues":0,"lpns_em_rota":2,"status":"EM ROTA","primeira_coleta":"06/06/2026 05:05","ultima_coleta":"06/06/2026 05:05"},{"pedido":"556553","uf":"AM","lpns":1,"lpns_entregues":0,"lpns_em_rota":1,"status":"EM ROTA","primeira_coleta":"06/06/2026 04:55","ultima_coleta":"06/06/2026 04:55"},{"pedido":"556138","uf":"AP","lpns":7,"lpns_entregues":0,"lpns_em_rota":7,"status":"EM ROTA","primeira_coleta":"06/06/2026 04:53","ultima_coleta":"06/06/2026 04:53"},{"pedido":"556111","uf":"AP","lpns":2,"lpns_entregues":0,"lpns_em_rota":2,"status":"EM ROTA","primeira_coleta":"06/06/2026 04:52","ultima_coleta":"06/06/2026 04:52"},{"pedido":"555969","uf":"BA","lpns":5,"lpns_entregues":0,"lpns_em_rota":5,"status":"EM ROTA","primeira_coleta":"06/06/2026 04:49","ultima_coleta":"06/06/2026 04:49"},{"pedido":"555896","uf":"BA","lpns":3,"lpns_entregues":0,"lpns_em_rota":3,"status":"EM ROTA","primeira_coleta":"06/06/2026 04:51","ultima_coleta":"06/06/2026 04:51"},{"pedido":"556541","uf":"BA","lpns":1,"lpns_entregues":0,"lpns_em_rota":1,"status":"EM ROTA","primeira_coleta":"06/06/2026 04:48","ultima_coleta":"06/06/2026 04:48"},{"pedido":"555900","uf":"GO","lpns":17,"lpns_entregues":0,"lpns_em_rota":17,"status":"EM ROTA","primeira_coleta":"07/06/2026 22:51","ultima_coleta":"07/06/2026 22:51"},{"pedido":"555975","uf":"GO","lpns":2,"lpns_entregues":0,"lpns_em_rota":2,"status":"EM ROTA","primeira_coleta":"08/06/2026 05:41","ultima_coleta":"08/06/2026 05:41"},{"pedido":"556546","uf":"MS","lpns":1,"lpns_entregues":0,"lpns_em_rota":1,"status":"EM ROTA","primeira_coleta":"06/06/2026 05:01","ultima_coleta":"06/06/2026 05:01"},{"pedido":"556548","uf":"MS","lpns":1,"lpns_entregues":0,"lpns_em_rota":1,"status":"EM ROTA","primeira_coleta":"06/06/2026 05:03","ultima_coleta":"06/06/2026 05:03"},{"pedido":"555905","uf":"MT","lpns":1,"lpns_entregues":0,"lpns_em_rota":1,"status":"EM ROTA","primeira_coleta":"06/06/2026 05:04","ultima_coleta":"06/06/2026 05:04"},{"pedido":"556204","uf":"MT","lpns":1,"lpns_entregues":0,"lpns_em_rota":1,"status":"EM ROTA","primeira_coleta":"08/06/2026 00:11","ultima_coleta":"08/06/2026 00:11"},{"pedido":"556170","uf":"PA","lpns":3,"lpns_entregues":0,"lpns_em_rota":3,"status":"EM ROTA","primeira_coleta":"01/06/2026 22:17","ultima_coleta":"01/06/2026 22:17"},{"pedido":"555984","uf":"PA","lpns":1,"lpns_entregues":0,"lpns_em_rota":1,"status":"EM ROTA","primeira_coleta":"06/06/2026 05:09","ultima_coleta":"06/06/2026 05:09"},{"pedido":"556173","uf":"PB","lpns":1,"lpns_entregues":0,"lpns_em_rota":1,"status":"EM ROTA","primeira_coleta":"06/06/2026 09:17","ultima_coleta":"06/06/2026 09:17"},{"pedido":"555906","uf":"PE","lpns":1,"lpns_entregues":0,"lpns_em_rota":1,"status":"EM ROTA","primeira_coleta":"07/06/2026 22:51","ultima_coleta":"07/06/2026 22:51"},{"pedido":"556113","uf":"PR","lpns":2,"lpns_entregues":0,"lpns_em_rota":2,"status":"EM ROTA","primeira_coleta":"08/06/2026 10:53","ultima_coleta":"08/06/2026 10:53"},{"pedido":"556549","uf":"PR","lpns":1,"lpns_entregues":0,"lpns_em_rota":1,"status":"EM ROTA","primeira_coleta":"08/06/2026 05:31","ultima_coleta":"08/06/2026 05:31"},{"pedido":"556743","uf":"RJ","lpns":1,"lpns_entregues":0,"lpns_em_rota":1,"status":"EM ROTA","primeira_coleta":"07/06/2026 22:50","ultima_coleta":"07/06/2026 22:50"},{"pedido":"556157","uf":"RO","lpns":18,"lpns_entregues":0,"lpns_em_rota":18,"status":"EM ROTA","primeira_coleta":"06/06/2026 05:02","ultima_coleta":"06/06/2026 05:02"},{"pedido":"555911","uf":"RO","lpns":1,"lpns_entregues":0,"lpns_em_rota":1,"status":"EM ROTA","primeira_coleta":"06/06/2026 05:02","ultima_coleta":"06/06/2026 05:02"},{"pedido":"556258","uf":"RO","lpns":1,"lpns_entregues":0,"lpns_em_rota":1,"status":"EM ROTA","primeira_coleta":"06/06/2026 05:01","ultima_coleta":"06/06/2026 05:01"},{"pedido":"556158","uf":"RR","lpns":7,"lpns_entregues":0,"lpns_em_rota":7,"status":"EM ROTA","primeira_coleta":"06/06/2026 05:01","ultima_coleta":"06/06/2026 05:01"},{"pedido":"556744","uf":"RS","lpns":1,"lpns_entregues":0,"lpns_em_rota":1,"status":"EM ROTA","primeira_coleta":"08/06/2026 05:33","ultima_coleta":"08/06/2026 05:33"},{"pedido":"556161","uf":"SE","lpns":25,"lpns_entregues":0,"lpns_em_rota":25,"status":"EM ROTA","primeira_coleta":"06/06/2026 05:01","ultima_coleta":"06/06/2026 05:01"},{"pedido":"556300","uf":"SE","lpns":1,"lpns_entregues":0,"lpns_em_rota":1,"status":"EM ROTA","primeira_coleta":"06/06/2026 10:36","ultima_coleta":"06/06/2026 10:36"},{"pedido":"556163","uf":"TO","lpns":15,"lpns_entregues":0,"lpns_em_rota":15,"status":"EM ROTA","primeira_coleta":"06/06/2026 05:01","ultima_coleta":"06/06/2026 05:01"}]};
+
+    function pct(a, b) { return b ? Math.round((a / b) * 100) : 0; }
+
+    function renderRow(r) {
+      return '<tr data-q="' + (r.uf + ' ' + r.pedido).toLowerCase() + '">' +
+        '<td><strong>' + r.uf + '</strong></td>' +
+        '<td>' + r.pedido + '</td>' +
+        '<td><strong>' + r.lpns + '</strong></td>' +
+        '<td>' + (r.primeira_coleta || 'â€”') + '</td></tr>';
+    }
+
+    function render() {
+      const m = DATA.meta, s = DATA.resumo;
+      document.getElementById('titulo').textContent = m.titulo;
+      document.getElementById('embalagem').textContent = m.embalagem;
+      document.getElementById('atualizado').textContent = m.atualizado_em;
+      document.getElementById('fonte').textContent = m.fonte;
+
+      document.getElementById('kpis').innerHTML = [
+        { cls: 'blue', lbl: 'Total de pedidos', val: s.pedidos_total, hint: s.ufs + ' UFs' },
+        { cls: 'ok', lbl: 'Pedidos entregues', val: s.pedidos_entregues, hint: s.lpns_entregues + ' LPNs' },
+        { cls: 'warn', lbl: 'Pedidos em rota', val: s.pedidos_em_rota, hint: s.lpns_em_rota + ' LPNs' },
+        { cls: 'blue', lbl: 'Total de LPNs', val: s.lpns_total, hint: 'volumes distintos' },
+      ].map(k => '<div class="kpi ' + k.cls + '"><div class="lbl">' + k.lbl + '</div><div class="val">' + k.val + '</div><div class="hint">' + k.hint + '</div></div>').join('');
+
+      const pp = pct(s.pedidos_entregues, s.pedidos_total);
+      const pl = pct(s.lpns_entregues, s.lpns_total);
+      document.getElementById('pct-ped').textContent = s.pedidos_entregues + ' de ' + s.pedidos_total + ' (' + pp + '%)';
+      document.getElementById('pct-lpn').textContent = s.lpns_entregues + ' de ' + s.lpns_total + ' (' + pl + '%)';
+      document.getElementById('bar-ped-ok').style.width = pp + '%';
+      document.getElementById('bar-ped-rota').style.width = (100 - pp) + '%';
+      document.getElementById('bar-lpn-ok').style.width = pl + '%';
+      document.getElementById('bar-lpn-rota').style.width = (100 - pl) + '%';
+
+      document.getElementById('uf-grid').innerHTML = DATA.por_uf.map(u =>
+        '<div class="uf-card"><div class="uf">' + u.uf + '</div><div class="nums">' +
+        '<strong>' + u.pedidos + '</strong> pedidos<br>' +
+        '<span class="ent">' + u.pedidos_entregues + ' ent</span> Â· ' +
+        '<span class="rota">' + u.pedidos_em_rota + ' rota</span><br>' +
+        u.lpns + ' LPNs</div></div>'
+      ).join('');
+
+      document.getElementById('cnt-ent').textContent = DATA.entregues.length + ' pedidos';
+      document.getElementById('cnt-rota').textContent = DATA.em_rota.length + ' pedidos';
+      document.getElementById('tb-ent').innerHTML = DATA.entregues.map(renderRow).join('');
+      document.getElementById('tb-rota').innerHTML = DATA.em_rota.map(renderRow).join('');
+    }
+
+    document.getElementById('busca').addEventListener('input', function () {
+      const q = this.value.trim().toLowerCase();
+      document.querySelectorAll('#tb-ent tr, #tb-rota tr').forEach(tr => {
+        tr.style.display = !q || tr.dataset.q.includes(q) ? '' : 'none';
+      });
+    });
+
+    render();
+  </script>
+</body>
+</html>

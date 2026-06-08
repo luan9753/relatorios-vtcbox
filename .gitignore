@@ -1,0 +1,28 @@
+# Credenciais
+.env
+*.env
+**/.env
+
+# PDFs e dados operacionais (gerados localmente)
+*.pdf
+**/_renomeacao_log.csv
+**/_renomeacao_rn_log.csv
+
+# Excel / exports temporários
+~$*.xlsx
+*.xlsx
+
+# Arquivos locais / zip
+*.zip
+VTCBOX_whatsapp*.txt
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Sistema
+.DS_Store
+Thumbs.db
+desktop.ini
