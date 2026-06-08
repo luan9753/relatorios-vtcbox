@@ -42,7 +42,17 @@ Gera `multigrafico_556160_SC.html` e abre no navegador.
 
 ## GitHub Pages
 
-O arquivo `Relatórios de Temperatura/multigrafico_556160_SC.html` é autocontido (dados embutidos) e pode ser publicado via Pages apontando para essa pasta ou movendo o HTML para `docs/`.
+O multigráfico está em `docs/index.html` (cópia do `multigrafico_556160_SC.html`).
+
+### Publicar
+
+1. Instale Git e GitHub CLI (já instalados neste PC)
+2. Duplo clique em **`PUBLICAR_GITHUB.bat`**
+3. Faça login no GitHub quando pedir (`gh auth login`)
+4. O script cria o repo **`relatorios-vtcbox`**, envia o código e configura Pages
+
+Depois de alguns minutos, o multigráfico fica online em:
+`https://SEU_USUARIO.github.io/relatorios-vtcbox/`
 
 ## Fonte de dados
 
