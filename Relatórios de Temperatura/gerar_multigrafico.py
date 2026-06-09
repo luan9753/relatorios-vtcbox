@@ -36,36 +36,43 @@ def recalcular_metricas(points: list[dict]) -> dict:
 
 
 def cortar_pos_entrega(points: list[dict]) -> tuple[list[dict], int]:
-    """Remove trecho final após salto abrupto para cima (logger fora da caixa)."""
+    """Remove trecho final após salto(s) para cima saindo da faixa de trânsito."""
     if len(points) < 3:
         return points, 0
 
-    corte_em = None
-    for i in range(len(points) - 1, 0, -1):
-        delta = points[i]["temp"] - points[i - 1]["temp"]
-        if delta >= SALTO_MIN_C:
-            corte_em = i
+    n0 = len(points)
+    min_idx = max(1, int(n0 * 0.70))  # só considera salto nos últimos 30% da série
+    total_cortados = 0
+
+    while len(points) >= 3:
+        corte_em = None
+        limite = min(min_idx, len(points) - 1)
+        for i in range(len(points) - 1, limite - 1, -1):
+            delta = points[i]["temp"] - points[i - 1]["temp"]
+            if delta < SALTO_MIN_C:
+                continue
+            if points[i - 1]["temp"] <= FAIXA_MAX:
+                corte_em = i
+                break
+
+        if corte_em is None:
             break
 
-    if corte_em is None:
-        return points, 0
+        pre = points[max(0, corte_em - JANELA_ESTAVEL) : corte_em]
+        suffix = points[corte_em:]
+        if not pre or not suffix:
+            break
 
-    pre = points[max(0, corte_em - JANELA_ESTAVEL) : corte_em]
-    suffix = points[corte_em:]
-    if not pre or not suffix:
-        return points, 0
+        pre_med = statistics.median(p["temp"] for p in pre)
+        suf_med = statistics.median(p["temp"] for p in suffix)
+        if suf_med < pre_med + 1.0 and max(p["temp"] for p in suffix) <= FAIXA_MAX:
+            break
 
-    pre_med = statistics.median(p["temp"] for p in pre)
-    suf_med = statistics.median(p["temp"] for p in suffix)
-    suf_min = min(p["temp"] for p in suffix)
+        removidos = len(points) - corte_em
+        points = points[:corte_em]
+        total_cortados += removidos
 
-    # Só corta se a cauda após o salto permanece aquecida (pós-entrega), não queda no meio do trajeto.
-    cauda_aquecida = suf_med >= pre_med + 1.5 or suf_min >= FAIXA_MAX
-    if not cauda_aquecida:
-        return points, 0
-
-    cortados = len(points) - corte_em
-    return points[:corte_em], cortados
+    return points, total_cortados
 
 
 def parse_pdf(pdf: Path, pedido: str, uf: str) -> dict | None:
