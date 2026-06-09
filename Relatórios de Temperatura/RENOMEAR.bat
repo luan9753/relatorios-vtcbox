@@ -9,7 +9,7 @@ echo.
 where py >nul 2>&1 && set PY=py -3
 if not defined PY where python >nul 2>&1 && set PY=python
 if not defined PY (
-  echo Python nao encontrado. Instale Python 3 e execute: pip install pymupdf pyodbc
+  echo Python nao encontrado. Instale Python 3 e execute: pip install pymupdf pandas openpyxl
   pause
   exit /b 1
 )

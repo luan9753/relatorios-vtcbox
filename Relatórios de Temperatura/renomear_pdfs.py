@@ -1,4 +1,4 @@
-"""Renomeia PDFs: {pedido}_{logger}_{uf}.pdf"""
+"""Renomeia PDFs soltos: {pedido}_{logger}_{uf}.pdf em Pedido_{pedido}_{uf}/"""
 from __future__ import annotations
 
 import csv
@@ -8,43 +8,63 @@ from datetime import datetime
 from pathlib import Path
 
 import fitz
+import pandas as pd
 
 PASTA = Path(__file__).resolve().parent
+XLSX_PADRAO = PASTA.parent / "Base.xlsx"
 LOG = PASTA / "_renomeacao_log.csv"
 PAT_LOGGER = re.compile(r"Nome do dispositivo:\s*([A-Z][A-Z0-9]+)", re.I)
 PAT_JA = re.compile(r"^\d+_[A-Z][A-Z0-9]+_[A-Z]{2}(_\d+)?\.pdf$", re.I)
 
-# Pedido SC VTCBOX (banco em 08/06/2026)
-PEDIDO_PADRAO = "556160"
-UF_PADRAO = "SC"
-LOGGER_PEDIDO_UF: dict[str, tuple[str, str]] = {}
+
+def norm_logger(value) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    s = str(value).strip().upper()
+    return "" if s in {"", "NAN", "NONE"} else s
 
 
-def carregar_lookup_odbc() -> None:
-    try:
-        import pyodbc
-    except ImportError:
-        return
+def find_xlsx() -> Path | None:
+    if len(sys.argv) > 1:
+        arg = Path(sys.argv[1])
+        return arg if arg.is_file() else None
+    if XLSX_PADRAO.is_file():
+        return XLSX_PADRAO
+    candidatos = [
+        p
+        for p in PASTA.parent.glob("*.xlsx")
+        if not p.name.startswith("~$")
+        and not p.name.startswith("_")
+        and "por_pedido" not in p.name.lower()
+    ]
+    if not candidatos:
+        return None
+    preferidos = [p for p in candidatos if p.name.lower() in {"base.xlsx", "vtcbox_130l_analitico.xlsx"}]
+    pool = preferidos or candidatos
+    return max(pool, key=lambda p: p.stat().st_mtime)
 
-    sql = """
-    SELECT DISTINCT nullif(btrim(cd_referencia), '') AS logger, nr_pedido, cd_uf
-    FROM vtc_stage.documentos
-    WHERE nr_pedido = ?
-      AND cd_referencia IS NOT NULL
-      AND btrim(cd_referencia) <> ''
-    """
-    try:
-        with pyodbc.connect("DSN=AuraVTC", timeout=30) as conn:
-            cur = conn.cursor()
-            cur.execute(sql, (PEDIDO_PADRAO,))
-            for logger, pedido, uf in cur.fetchall():
-                if logger:
-                    LOGGER_PEDIDO_UF[str(logger).strip().upper()] = (
-                        str(pedido).strip(),
-                        str(uf).strip().upper(),
-                    )
-    except Exception as exc:
-        print(f"Aviso: lookup ODBC falhou ({exc}). Usando pedido/UF padrao.")
+
+def load_lookup(xlsx: Path) -> dict[str, tuple[str, str]]:
+    xl = pd.ExcelFile(xlsx)
+    sheet = "com_lpn" if "com_lpn" in xl.sheet_names else xl.sheet_names[0]
+    df = pd.read_excel(xlsx, sheet_name=sheet)
+    cols = {str(c).strip().lower(): c for c in df.columns}
+
+    lookup: dict[str, tuple[str, str]] = {}
+    for _, row in df.iterrows():
+        logger = norm_logger(row.get(cols.get("logger", "logger"), ""))
+        if not logger or logger in lookup:
+            continue
+        pedido = str(row.get(cols.get("pedido", "pedido"), "")).strip()
+        uf = str(row.get(cols.get("uf", "uf"), "")).strip().upper()
+        lookup[logger] = (pedido, uf)
+    return lookup
+
+
+def pasta_pedido(pedido: str, uf: str) -> Path:
+    dest = PASTA / f"Pedido_{pedido}_{uf}"
+    dest.mkdir(parents=True, exist_ok=True)
+    return dest
 
 
 def extrair_logger(pdf: Path) -> str:
@@ -55,6 +75,13 @@ def extrair_logger(pdf: Path) -> str:
         doc.close()
     m = PAT_LOGGER.search(text)
     return m.group(1).upper() if m else ""
+
+
+def nomes_reservados() -> set[str]:
+    reservados: set[str] = set()
+    for pdf in PASTA.rglob("*.pdf"):
+        reservados.add(pdf.name)
+    return reservados
 
 
 def nome_destino(pedido: str, logger: str, uf: str, reservados: set[str]) -> str:
@@ -72,41 +99,54 @@ def nome_destino(pedido: str, logger: str, uf: str, reservados: set[str]) -> str
         n += 1
 
 
-def main() -> int:
-    carregar_lookup_odbc()
-
-    pdfs = sorted(
+def pdfs_pendentes() -> list[Path]:
+    return sorted(
         p
         for p in PASTA.glob("*.pdf")
         if not p.name.startswith("_") and not PAT_JA.match(p.name)
     )
+
+
+def main() -> int:
+    xlsx = find_xlsx()
+    if not xlsx:
+        print(f"Coloque o Excel em: {XLSX_PADRAO}")
+        return 1
+
+    lookup = load_lookup(xlsx)
+    pdfs = pdfs_pendentes()
     if not pdfs:
-        print("Nenhum PDF pendente para renomear.")
+        print("Nenhum PDF solto pendente para renomear.")
+        print(f"XLSX: {xlsx.name} ({len(lookup)} loggers)")
         return 0
 
-    reservados = {p.name for p in PASTA.glob("*.pdf")}
+    reservados = nomes_reservados()
     rows: list[dict] = []
     agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    pastas_criadas: set[str] = set()
 
     print(f"Pasta: {PASTA}")
+    print(f"XLSX:  {xlsx.name}")
+    print(f"Loggers no Excel: {len(lookup)}")
     print(f"PDFs pendentes: {len(pdfs)}\n")
 
     for pdf in pdfs:
         original = pdf.name
         logger = extrair_logger(pdf)
-        if logger and logger in LOGGER_PEDIDO_UF:
-            pedido, uf = LOGGER_PEDIDO_UF[logger]
-        elif logger:
-            pedido, uf = PEDIDO_PADRAO, UF_PADRAO
+        if logger and logger in lookup:
+            pedido, uf = lookup[logger]
         else:
-            pedido, uf = PEDIDO_PADRAO, "SEM_LOGGER" if not logger else UF_PADRAO
+            pedido, uf = "SEM_PEDIDO", "SEM_UF"
+
+        pasta = pasta_pedido(pedido, uf)
+        pastas_criadas.add(pasta.name)
 
         dest_name = nome_destino(pedido, logger, uf, reservados)
-        dest = PASTA / dest_name
+        dest = pasta / dest_name
 
         if dest.exists() and dest.resolve() != pdf.resolve():
             status = "erro_destino_existe"
-        elif pdf.name == dest_name:
+        elif pdf.name == dest_name and pdf.parent == pasta:
             status = "ja_nomeado"
         else:
             pdf.rename(dest)
@@ -115,15 +155,16 @@ def main() -> int:
         rows.append(
             {
                 "executado_em": agora,
+                "xlsx_usado": xlsx.name,
                 "arquivo_original": original,
-                "arquivo_novo": dest_name,
+                "arquivo_novo": f"{pasta.name}/{dest_name}",
                 "logger": logger,
                 "pedido": pedido,
                 "uf": uf,
                 "status": status,
             }
         )
-        print(f"{original} -> {dest_name} [{status}]")
+        print(f"{original} -> {pasta.name}/{dest_name} [{status}]")
 
     if rows:
         write_header = not LOG.exists()
@@ -134,7 +175,11 @@ def main() -> int:
             w.writerows(rows)
 
     renomeados = sum(1 for r in rows if r["status"] == "renomeado")
+    sem_match = sum(1 for r in rows if r["pedido"] == "SEM_PEDIDO")
     print(f"\nRenomeados: {renomeados}/{len(rows)}")
+    if sem_match:
+        print(f"Sem match no Excel: {sem_match}")
+    print(f"Pastas: {', '.join(sorted(pastas_criadas))}")
     print(f"Log: {LOG}")
     return 0
 
