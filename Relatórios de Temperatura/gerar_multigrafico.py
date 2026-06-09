@@ -161,13 +161,21 @@ def coletar_pdfs() -> list[tuple[Path, str, str]]:
     return encontrados
 
 
+def _prioridade_pdf(item: dict) -> tuple:
+    dup = 1 if re.search(r"_\d+\.pdf$", item["arquivo"], re.I) else 0
+    return (dup, -item["pontos"])
+
+
 def carregar_series() -> list[dict]:
-    series: list[dict] = []
+    por_id: dict[str, dict] = {}
     for pdf, pedido, uf in coletar_pdfs():
         item = parse_pdf(pdf, pedido, uf)
-        if item:
-            series.append(item)
-    series.sort(key=lambda s: (s["pedido"], s["uf"], s["logger"]))
+        if not item:
+            continue
+        key = item["id"]
+        if key not in por_id or _prioridade_pdf(item) < _prioridade_pdf(por_id[key]):
+            por_id[key] = item
+    series = sorted(por_id.values(), key=lambda s: (s["pedido"], s["uf"], s["logger"]))
     return series
 
 
