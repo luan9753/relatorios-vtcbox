@@ -8,9 +8,11 @@ from datetime import datetime
 from pathlib import Path
 
 import fitz
+import pandas as pd
 
 PASTA = Path(__file__).resolve().parent
 OUT_HTML = PASTA / "multigrafico_todos.html"
+XLSX_BASE = PASTA / "Base.xlsx"
 PADRAO_PDF = re.compile(r"^(\d+)_([A-Z][A-Z0-9]+)_([A-Z]{2})(_\d+)?\.pdf$", re.I)
 PAT_LOGGER = re.compile(r"Nome do dispositivo:\s*([A-Z][A-Z0-9]+)", re.I)
 PAT_MIN = re.compile(r"Temperatura m[ií]nima:\s*([-\d.]+)", re.I)
@@ -21,6 +23,64 @@ FAIXA_MIN = 2.0
 FAIXA_MAX = 8.0
 SALTO_MIN_C = 2.0
 JANELA_ESTAVEL = 20
+
+
+def _norm_logger(value) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    s = str(value).strip().upper()
+    return "" if s in {"", "NAN", "NONE"} else s
+
+
+def _norm_pedido(value) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    s = str(value).strip()
+    if s.endswith(".0"):
+        s = s[:-2]
+    return s
+
+
+def _norm_uf(value) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    return str(value).strip().upper()
+
+
+def _parse_data(value) -> str | None:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    if isinstance(value, datetime):
+        return value.strftime("%Y-%m-%d %H:%M:%S")
+    dt = pd.to_datetime(value, dayfirst=True, errors="coerce")
+    if pd.isna(dt):
+        return None
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def carregar_datas_base() -> dict[tuple[str, str, str], dict[str, str | None]]:
+    if not XLSX_BASE.is_file():
+        return {}
+    df = pd.read_excel(XLSX_BASE)
+    cols = {str(c).strip().lower(): c for c in df.columns}
+    coleta_col = next((cols[k] for k in cols if "coleta" in k), None)
+    entrega_col = next((cols[k] for k in cols if "entrega" in k), None)
+    lookup: dict[tuple[str, str, str], dict[str, str | None]] = {}
+    for _, row in df.iterrows():
+        pedido = _norm_pedido(row.get(cols.get("pedido", "pedido")))
+        logger = _norm_logger(row.get(cols.get("logger", "logger")))
+        uf = _norm_uf(row.get(cols.get("uf", "uf")))
+        if not pedido or not logger or not uf:
+            continue
+        lookup[(pedido, logger, uf)] = {
+            "data_coleta": _parse_data(row.get(coleta_col)) if coleta_col else None,
+            "data_entrega": _parse_data(row.get(entrega_col)) if entrega_col else None,
+        }
+    return lookup
+
+
+def _chave_recente(item: dict) -> str:
+    return item.get("data_entrega") or item["fim"]
 
 
 def recalcular_metricas(points: list[dict]) -> dict:
@@ -174,15 +234,19 @@ def _prioridade_pdf(item: dict) -> tuple:
 
 
 def carregar_series() -> list[dict]:
+    datas = carregar_datas_base()
     por_id: dict[str, dict] = {}
     for pdf, pedido, uf in coletar_pdfs():
         item = parse_pdf(pdf, pedido, uf)
         if not item:
             continue
+        extra = datas.get((pedido, item["logger"], uf), {})
+        item["data_coleta"] = extra.get("data_coleta")
+        item["data_entrega"] = extra.get("data_entrega")
         key = item["id"]
         if key not in por_id or _prioridade_pdf(item) < _prioridade_pdf(por_id[key]):
             por_id[key] = item
-    series = sorted(por_id.values(), key=lambda s: (s["pedido"], s["uf"], s["logger"]))
+    series = sorted(por_id.values(), key=_chave_recente, reverse=True)
     return series
 
 
@@ -199,7 +263,11 @@ def contar_ok(series: list[dict]) -> int:
 
 def render_html(series: list[dict], gerado_em: str) -> str:
     data_json = json.dumps(series, ensure_ascii=False)
-    pedidos = sorted({s["pedido"] for s in series})
+    pedidos = sorted(
+        {s["pedido"] for s in series},
+        key=lambda p: max(_chave_recente(s) for s in series if s["pedido"] == p),
+        reverse=True,
+    )
     ufs = sorted({s["uf"] for s in series})
     pedidos_json = json.dumps(pedidos, ensure_ascii=False)
     ufs_json = json.dumps(ufs, ensure_ascii=False)
@@ -768,7 +836,7 @@ def render_html(series: list[dict], gerado_em: str) -> str:
       </div>
     </section>
 
-    <div class="footer">Toque em um card para ver o gráfico completo · Ordenado por Pedido → UF → Logger</div>
+    <div class="footer">Toque em um card para ver o gráfico completo · Ordenado do mais recente ao mais antigo</div>
   </div>
 
   <nav class="bottom-nav" id="bottom-nav">
@@ -855,6 +923,10 @@ def render_html(series: list[dict], gerado_em: str) -> str:
       }};
     }}
 
+    function chaveRecente(s) {{
+      return s.data_entrega || s.fim;
+    }}
+
     function filtrarDados() {{
       const f = getFiltros();
       return DATA.filter(s => {{
@@ -867,7 +939,7 @@ def render_html(series: list[dict], gerado_em: str) -> str:
           if (!hay.includes(f.busca)) return false;
         }}
         return true;
-      }});
+      }}).sort((a, b) => chaveRecente(b).localeCompare(chaveRecente(a)));
     }}
 
     function atualizarKpis(lista) {{
