@@ -438,46 +438,150 @@ def render_html(series: list[dict], gerado_em: str) -> str:
       background: var(--surface);
       border: 1px solid var(--line);
       border-radius: var(--radius);
-      padding: 14px;
+      padding: 16px;
       margin-bottom: 14px;
       box-shadow: var(--shadow);
     }}
     .modal-section h2 {{
-      margin: 0 0 12px;
+      margin: 0;
       font-size: .95rem;
       font-weight: 700;
     }}
+    .modal-section-sub {{
+      margin: 4px 0 16px;
+      font-size: .75rem;
+      color: var(--muted);
+    }}
     .donut-grid {{
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-      gap: 10px;
-    }}
-    .donut-card {{
-      background: var(--chart-bg);
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      padding: 6px 6px 4px;
-      text-align: center;
-      transition: border-color .15s;
-    }}
-    .donut-card.highlight {{ border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }}
-    .donut-card h4 {{
-      margin: 0 0 2px;
-      font-size: .72rem;
-      font-weight: 700;
-      color: var(--ink);
-      line-height: 1.2;
-      min-height: 2.4em;
       display: flex;
-      align-items: center;
+      flex-wrap: wrap;
+      gap: 14px;
       justify-content: center;
     }}
-    .donut-card .sub {{
-      font-size: .65rem;
+    .donut-empty {{
+      width: 100%;
       color: var(--muted);
-      margin-top: 2px;
+      font-size: .85rem;
+      padding: 12px;
+      text-align: center;
     }}
-    .donut-chart {{ height: 120px; }}
+    .donut-card {{
+      flex: 1 1 220px;
+      max-width: 300px;
+      background: linear-gradient(180deg, #131c2e 0%, var(--chart-bg) 100%);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 18px 16px 14px;
+      text-align: center;
+      cursor: pointer;
+      transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+    }}
+    .donut-card:hover {{
+      transform: translateY(-2px);
+      border-color: #334155;
+    }}
+    .donut-card.highlight {{
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent), 0 10px 28px rgba(56, 189, 248, .14);
+    }}
+    .donut-card h4 {{
+      margin: 0 0 14px;
+      font-size: .88rem;
+      font-weight: 700;
+      color: var(--ink);
+      line-height: 1.25;
+      min-height: auto;
+      letter-spacing: .02em;
+    }}
+    .donut-wrap {{
+      display: flex;
+      justify-content: center;
+      margin-bottom: 14px;
+    }}
+    .donut-ring {{
+      --pct: 0;
+      --ok: #34d399;
+      --fora: #fb923c;
+      --track: #243044;
+      width: 148px;
+      height: 148px;
+      border-radius: 50%;
+      background: conic-gradient(
+        var(--ok) 0deg calc(var(--pct) * 3.6deg),
+        var(--fora) calc(var(--pct) * 3.6deg) 360deg
+      );
+      display: grid;
+      place-items: center;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, .28), inset 0 0 0 1px rgba(255, 255, 255, .05);
+      transition: background .35s ease;
+    }}
+    .donut-ring.empty {{
+      background: var(--track);
+    }}
+    .donut-ring.perfect {{
+      background: var(--ok);
+    }}
+    .donut-ring.zero {{
+      background: var(--fora);
+    }}
+    .donut-hole {{
+      width: 92px;
+      height: 92px;
+      border-radius: 50%;
+      background: #0b1220;
+      border: 1px solid rgba(255, 255, 255, .07);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+    }}
+    .donut-pct {{
+      font-size: 1.65rem;
+      font-weight: 800;
+      line-height: 1;
+      color: var(--ink);
+    }}
+    .donut-pct small {{
+      font-size: .82rem;
+      font-weight: 700;
+      opacity: .75;
+    }}
+    .donut-lbl {{
+      font-size: .62rem;
+      text-transform: uppercase;
+      letter-spacing: .09em;
+      color: var(--muted);
+    }}
+    .donut-stats {{
+      display: flex;
+      justify-content: center;
+      gap: 18px;
+      font-size: .8rem;
+    }}
+    .donut-stat {{
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--muted);
+    }}
+    .donut-stat strong {{
+      color: var(--ink);
+      font-weight: 700;
+    }}
+    .dot {{
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }}
+    .dot.ok {{ background: #34d399; box-shadow: 0 0 8px rgba(52, 211, 153, .45); }}
+    .dot.fora {{ background: #fb923c; box-shadow: 0 0 8px rgba(251, 146, 60, .4); }}
+    .donut-total {{
+      margin-top: 10px;
+      font-size: .68rem;
+      color: var(--muted);
+    }}
     .nav-tabs {{
       position: sticky;
       top: calc(56px + var(--safe-t));
@@ -834,6 +938,7 @@ def render_html(series: list[dict], gerado_em: str) -> str:
 
     <div class="modal-section">
       <h2>Conformidade por modal</h2>
+      <p class="modal-section-sub">Clique em um card para filtrar os loggers</p>
       <div class="donut-grid" id="donut-grid"></div>
     </div>
 
@@ -1025,10 +1130,6 @@ def render_html(series: list[dict], gerado_em: str) -> str:
       document.getElementById("bar-ok").style.width = pct + "%";
     }}
 
-    function slugModal(modal) {{
-      return "donut-" + String(modal || "sem").replace(/[^a-zA-Z0-9]+/g, "_");
-    }}
-
     function renderDonutsModal(lista) {{
       const grid = document.getElementById("donut-grid");
       const filtroModal = document.getElementById("filtro-modal").value;
@@ -1042,51 +1143,38 @@ def render_html(series: list[dict], gerado_em: str) -> str:
       const modais = [...porModal.keys()].sort((a, b) => a.localeCompare(b, "pt-BR"));
       grid.innerHTML = "";
       if (!modais.length) {{
-        grid.innerHTML = '<div style="color:var(--muted);font-size:.85rem;padding:12px">Sem dados para exibir.</div>';
+        grid.innerHTML = '<div class="donut-empty">Sem dados para exibir.</div>';
         return;
       }}
       modais.forEach(modal => {{
         const {{ ok, fora }} = porModal.get(modal);
         const total = ok + fora;
         const pct = total ? Math.round(100 * ok / total) : 0;
-        const cid = slugModal(modal);
+        const ringClass = !total ? " empty" : pct >= 100 ? " perfect" : pct <= 0 ? " zero" : "";
         const card = document.createElement("div");
         card.className = "donut-card" + (filtroModal === modal ? " highlight" : "");
+        card.title = "Filtrar por " + modal;
         card.innerHTML = `
           <h4>${{modal}}</h4>
-          <div class="donut-chart" id="${{cid}}"></div>
-          <div class="sub">${{ok}} OK · ${{fora}} Fora</div>
+          <div class="donut-wrap">
+            <div class="donut-ring${{ringClass}}" style="--pct:${{pct}}">
+              <div class="donut-hole">
+                <div class="donut-pct">${{total ? pct : "—"}}${{total ? "<small>%</small>" : ""}}</div>
+                <div class="donut-lbl">conformidade</div>
+              </div>
+            </div>
+          </div>
+          <div class="donut-stats">
+            <span class="donut-stat"><span class="dot ok"></span><strong>${{ok}}</strong> OK</span>
+            <span class="donut-stat"><span class="dot fora"></span><strong>${{fora}}</strong> Fora</span>
+          </div>
+          <div class="donut-total">${{total}} logger${{total !== 1 ? "s" : ""}}</div>
         `;
-        card.style.cursor = "pointer";
-        card.title = "Filtrar por " + modal;
         card.addEventListener("click", () => {{
           document.getElementById("filtro-modal").value = filtroModal === modal ? "" : modal;
           renderGrid();
         }});
         grid.appendChild(card);
-        const values = total ? [ok, fora] : [1];
-        const labels = total ? ["OK", "Fora"] : ["Sem dados"];
-        const colors = total ? ["#4ade80", "#fb923c"] : ["#243044"];
-        Plotly.newPlot(cid, [{{
-          values,
-          labels,
-          type: "pie",
-          hole: 0.62,
-          marker: {{ colors }},
-          textinfo: "none",
-          hovertemplate: "%{{label}}: %{{value}}<extra></extra>",
-        }}], {{
-          paper_bgcolor: "#0f172a",
-          plot_bgcolor: "#0f172a",
-          margin: {{ l: 4, r: 4, t: 4, b: 4 }},
-          showlegend: false,
-          annotations: [{{
-            text: total ? pct + "%" : "—",
-            x: 0.5, y: 0.5,
-            font: {{ size: 16, color: "#e8eef5", weight: 700 }},
-            showarrow: false,
-          }}],
-        }}, {{ responsive: true, displayModeBar: false, staticPlot: IS_MOBILE }});
       }});
     }}
 
