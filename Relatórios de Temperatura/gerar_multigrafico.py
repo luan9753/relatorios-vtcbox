@@ -58,13 +58,21 @@ def _parse_data(value) -> str | None:
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
-def carregar_datas_base() -> dict[tuple[str, str, str], dict[str, str | None]]:
+def _norm_modal(value) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return "Sem modal"
+    s = str(value).strip()
+    return s if s and s.upper() not in {"NAN", "NONE"} else "Sem modal"
+
+
+def carregar_metadados_base() -> dict[tuple[str, str, str], dict[str, str | None]]:
     if not XLSX_BASE.is_file():
         return {}
     df = pd.read_excel(XLSX_BASE)
     cols = {str(c).strip().lower(): c for c in df.columns}
     coleta_col = next((cols[k] for k in cols if "coleta" in k), None)
     entrega_col = next((cols[k] for k in cols if "entrega" in k), None)
+    modal_col = next((cols[k] for k in cols if "modal" in k), None)
     lookup: dict[tuple[str, str, str], dict[str, str | None]] = {}
     for _, row in df.iterrows():
         pedido = _norm_pedido(row.get(cols.get("pedido", "pedido")))
@@ -75,6 +83,7 @@ def carregar_datas_base() -> dict[tuple[str, str, str], dict[str, str | None]]:
         lookup[(pedido, logger, uf)] = {
             "data_coleta": _parse_data(row.get(coleta_col)) if coleta_col else None,
             "data_entrega": _parse_data(row.get(entrega_col)) if entrega_col else None,
+            "modal": _norm_modal(row.get(modal_col)) if modal_col else "Sem modal",
         }
     return lookup
 
@@ -234,15 +243,16 @@ def _prioridade_pdf(item: dict) -> tuple:
 
 
 def carregar_series() -> list[dict]:
-    datas = carregar_datas_base()
+    metadados = carregar_metadados_base()
     por_id: dict[str, dict] = {}
     for pdf, pedido, uf in coletar_pdfs():
         item = parse_pdf(pdf, pedido, uf)
         if not item:
             continue
-        extra = datas.get((pedido, item["logger"], uf), {})
+        extra = metadados.get((pedido, item["logger"], uf), {})
         item["data_coleta"] = extra.get("data_coleta")
         item["data_entrega"] = extra.get("data_entrega")
+        item["modal"] = extra.get("modal") or "Sem modal"
         key = item["id"]
         if key not in por_id or _prioridade_pdf(item) < _prioridade_pdf(por_id[key]):
             por_id[key] = item
@@ -269,8 +279,10 @@ def render_html(series: list[dict], gerado_em: str) -> str:
         reverse=True,
     )
     ufs = sorted({s["uf"] for s in series})
+    modais = sorted({s.get("modal") or "Sem modal" for s in series})
     pedidos_json = json.dumps(pedidos, ensure_ascii=False)
     ufs_json = json.dumps(ufs, ensure_ascii=False)
+    modais_json = json.dumps(modais, ensure_ascii=False)
     n_pedidos = len(pedidos)
     n_ufs = len(ufs)
     n_loggers = len(series)
@@ -422,6 +434,50 @@ def render_html(series: list[dict], gerado_em: str) -> str:
     }}
     .kpi-sec .val {{ font-size: 1.35rem; font-weight: 800; color: var(--accent); }}
     .kpi-sec .lbl {{ font-size: .68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-top: 2px; }}
+    .modal-section {{
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 14px;
+      margin-bottom: 14px;
+      box-shadow: var(--shadow);
+    }}
+    .modal-section h2 {{
+      margin: 0 0 12px;
+      font-size: .95rem;
+      font-weight: 700;
+    }}
+    .donut-grid {{
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 10px;
+    }}
+    .donut-card {{
+      background: var(--chart-bg);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 6px 6px 4px;
+      text-align: center;
+      transition: border-color .15s;
+    }}
+    .donut-card.highlight {{ border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }}
+    .donut-card h4 {{
+      margin: 0 0 2px;
+      font-size: .72rem;
+      font-weight: 700;
+      color: var(--ink);
+      line-height: 1.2;
+      min-height: 2.4em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }}
+    .donut-card .sub {{
+      font-size: .65rem;
+      color: var(--muted);
+      margin-top: 2px;
+    }}
+    .donut-chart {{ height: 120px; }}
     .nav-tabs {{
       position: sticky;
       top: calc(56px + var(--safe-t));
@@ -776,6 +832,11 @@ def render_html(series: list[dict], gerado_em: str) -> str:
       <div class="kpi-sec"><div class="val" id="kpi-ufs">{n_ufs}</div><div class="lbl">UFs</div></div>
     </div>
 
+    <div class="modal-section">
+      <h2>Conformidade por modal</h2>
+      <div class="donut-grid" id="donut-grid"></div>
+    </div>
+
     <div class="nav-tabs" id="nav-tabs">
       <button class="tab active" data-tab="individual">Visão geral</button>
       <button class="tab" data-tab="detalhe">Detalhe</button>
@@ -801,6 +862,10 @@ def render_html(series: list[dict], gerado_em: str) -> str:
           <div class="field">
             <label>UF</label>
             <select id="filtro-uf"><option value="">Todas as UFs</option></select>
+          </div>
+          <div class="field">
+            <label>Modal</label>
+            <select id="filtro-modal"><option value="">Todos os modais</option></select>
           </div>
           <div class="field">
             <label>Buscar</label>
@@ -849,6 +914,7 @@ def render_html(series: list[dict], gerado_em: str) -> str:
     const DATA = {data_json};
     const PEDIDOS = {pedidos_json};
     const UFS = {ufs_json};
+    const MODAIS = {modais_json};
     const FAIXA = [{FAIXA_MIN}, {FAIXA_MAX}];
     const IS_MOBILE = window.matchMedia("(max-width: 639px)").matches;
     const COLORS = [
@@ -918,6 +984,7 @@ def render_html(series: list[dict], gerado_em: str) -> str:
       return {{
         pedido: document.getElementById("filtro-pedido").value,
         uf: document.getElementById("filtro-uf").value,
+        modal: document.getElementById("filtro-modal").value,
         status: statusChip,
         busca: document.getElementById("busca-grid").value.trim().toUpperCase(),
       }};
@@ -932,6 +999,7 @@ def render_html(series: list[dict], gerado_em: str) -> str:
       return DATA.filter(s => {{
         if (f.pedido && s.pedido !== f.pedido) return false;
         if (f.uf && s.uf !== f.uf) return false;
+        if (f.modal && (s.modal || "Sem modal") !== f.modal) return false;
         if (f.status === "ok" && !conforme(s)) return false;
         if (f.status === "fora" && conforme(s)) return false;
         if (f.busca) {{
@@ -955,6 +1023,71 @@ def render_html(series: list[dict], gerado_em: str) -> str:
       document.getElementById("kpi-ufs").textContent = ufs;
       document.getElementById("kpi-pct").textContent = pct + "%";
       document.getElementById("bar-ok").style.width = pct + "%";
+    }}
+
+    function slugModal(modal) {{
+      return "donut-" + String(modal || "sem").replace(/[^a-zA-Z0-9]+/g, "_");
+    }}
+
+    function renderDonutsModal(lista) {{
+      const grid = document.getElementById("donut-grid");
+      const filtroModal = document.getElementById("filtro-modal").value;
+      const porModal = new Map();
+      lista.forEach(s => {{
+        const m = s.modal || "Sem modal";
+        if (!porModal.has(m)) porModal.set(m, {{ ok: 0, fora: 0 }});
+        const bucket = porModal.get(m);
+        if (conforme(s)) bucket.ok++; else bucket.fora++;
+      }});
+      const modais = [...porModal.keys()].sort((a, b) => a.localeCompare(b, "pt-BR"));
+      grid.innerHTML = "";
+      if (!modais.length) {{
+        grid.innerHTML = '<div style="color:var(--muted);font-size:.85rem;padding:12px">Sem dados para exibir.</div>';
+        return;
+      }}
+      modais.forEach(modal => {{
+        const {{ ok, fora }} = porModal.get(modal);
+        const total = ok + fora;
+        const pct = total ? Math.round(100 * ok / total) : 0;
+        const cid = slugModal(modal);
+        const card = document.createElement("div");
+        card.className = "donut-card" + (filtroModal === modal ? " highlight" : "");
+        card.innerHTML = `
+          <h4>${{modal}}</h4>
+          <div class="donut-chart" id="${{cid}}"></div>
+          <div class="sub">${{ok}} OK · ${{fora}} Fora</div>
+        `;
+        card.style.cursor = "pointer";
+        card.title = "Filtrar por " + modal;
+        card.addEventListener("click", () => {{
+          document.getElementById("filtro-modal").value = filtroModal === modal ? "" : modal;
+          renderGrid();
+        }});
+        grid.appendChild(card);
+        const values = total ? [ok, fora] : [1];
+        const labels = total ? ["OK", "Fora"] : ["Sem dados"];
+        const colors = total ? ["#4ade80", "#fb923c"] : ["#243044"];
+        Plotly.newPlot(cid, [{{
+          values,
+          labels,
+          type: "pie",
+          hole: 0.62,
+          marker: {{ colors }},
+          textinfo: "none",
+          hovertemplate: "%{{label}}: %{{value}}<extra></extra>",
+        }}], {{
+          paper_bgcolor: "#0f172a",
+          plot_bgcolor: "#0f172a",
+          margin: {{ l: 4, r: 4, t: 4, b: 4 }},
+          showlegend: false,
+          annotations: [{{
+            text: total ? pct + "%" : "—",
+            x: 0.5, y: 0.5,
+            font: {{ size: 16, color: "#e8eef5", weight: 700 }},
+            showarrow: false,
+          }}],
+        }}, {{ responsive: true, displayModeBar: false, staticPlot: IS_MOBILE }});
+      }});
     }}
 
     function traceTemp(s, color) {{
@@ -1030,6 +1163,7 @@ def render_html(series: list[dict], gerado_em: str) -> str:
       chartsRendered.clear();
       const lista = filtrarDados();
       atualizarKpis(lista);
+      renderDonutsModal(lista);
       const grid = document.getElementById("grid-mini");
       grid.innerHTML = "";
       if (!lista.length) {{
@@ -1047,7 +1181,7 @@ def render_html(series: list[dict], gerado_em: str) -> str:
             <div>
               <div class="card-pedido">Pedido ${{s.pedido}}<span class="card-uf">${{s.uf}}</span></div>
               <div class="card-logger">${{s.logger}}</div>
-              <div class="card-temps">Mín ${{fmtTemp(s.temp_min)}} · Máx ${{fmtTemp(s.temp_max)}}</div>
+              <div class="card-temps">${{s.modal || "Sem modal"}} · Mín ${{fmtTemp(s.temp_min)}} · Máx ${{fmtTemp(s.temp_max)}}</div>
             </div>
             <span class="badge ${{ok ? "ok" : "warn"}}">${{ok ? "OK" : "FORA"}}</span>
           </div>
@@ -1135,6 +1269,11 @@ def render_html(series: list[dict], gerado_em: str) -> str:
         opt.value = u; opt.textContent = u;
         document.getElementById("filtro-uf").appendChild(opt);
       }});
+      MODAIS.forEach(m => {{
+        const opt = document.createElement("option");
+        opt.value = m; opt.textContent = m;
+        document.getElementById("filtro-modal").appendChild(opt);
+      }});
     }}
 
     function popularDetalhe() {{
@@ -1190,13 +1329,14 @@ def render_html(series: list[dict], gerado_em: str) -> str:
       body.classList.toggle("open");
     }});
 
-    ["filtro-pedido", "filtro-uf"].forEach(id => {{
+    ["filtro-pedido", "filtro-uf", "filtro-modal"].forEach(id => {{
       document.getElementById(id).addEventListener("change", renderGrid);
     }});
     document.getElementById("busca-grid").addEventListener("input", renderGrid);
     document.getElementById("btn-limpar-filtros").addEventListener("click", () => {{
       document.getElementById("filtro-pedido").value = "";
       document.getElementById("filtro-uf").value = "";
+      document.getElementById("filtro-modal").value = "";
       document.getElementById("busca-grid").value = "";
       statusChip = "";
       document.querySelectorAll("#chips-status .chip").forEach((c, i) => c.classList.toggle("active", i === 0));
