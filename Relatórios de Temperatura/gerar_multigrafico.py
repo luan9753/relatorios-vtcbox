@@ -27,10 +27,11 @@ FAIXA_MIN = 2.0
 FAIXA_MAX = 8.0
 SALTO_MIN_C = 2.0
 JANELA_ESTAVEL = 20
+CORTE_INICIO_MS: tuple[int, int] | None = None
 
 
 def aplicar_pasta(pasta: Path) -> None:
-    global PASTA, OUT_HTML, XLSX_BASE, PAINEL_TITULO, PAINEL_BRAND, PAINEL_H1
+    global PASTA, OUT_HTML, XLSX_BASE, PAINEL_TITULO, PAINEL_BRAND, PAINEL_H1, CORTE_INICIO_MS
     PASTA = pasta.resolve()
     XLSX_BASE = PASTA / "Base.xlsx"
     if "130l" in pasta.name.lower():
@@ -38,11 +39,13 @@ def aplicar_pasta(pasta: Path) -> None:
         PAINEL_TITULO = "Caixa VTCBOX 130L Normal — Temperatura"
         PAINEL_BRAND = "VTCBOX · 130L Normal"
         PAINEL_H1 = "Painel Caixa 130L Normal"
+        CORTE_INICIO_MS = (11, 20)
     else:
         OUT_HTML = PASTA / "multigrafico_todos.html"
         PAINEL_TITULO = "Temperatura VTCBOX — Painel Executivo"
         PAINEL_BRAND = "VTCBOX · Caixa Nova"
         PAINEL_H1 = "Painel de Temperatura"
+        CORTE_INICIO_MS = None
 
 
 def _col(cols: dict[str, str], *partes: str) -> str | None:
@@ -175,6 +178,20 @@ def cortar_pos_entrega(points: list[dict]) -> tuple[list[dict], int]:
     return points, total_cortados
 
 
+def cortar_inicio_apos_horario(
+    points: list[dict], hora: int, minuto: int
+) -> tuple[list[dict], int]:
+    """Descarta leituras anteriores ao horário no primeiro dia da série."""
+    if not points:
+        return points, 0
+    primeiro = datetime.strptime(points[0]["t"], "%Y-%m-%d %H:%M:%S")
+    limite = primeiro.replace(hour=hora, minute=minuto, second=0, microsecond=0)
+    filtrados = [
+        p for p in points if datetime.strptime(p["t"], "%Y-%m-%d %H:%M:%S") >= limite
+    ]
+    return filtrados, len(points) - len(filtrados)
+
+
 def parse_pdf(pdf: Path, pedido: str, uf: str) -> dict | None:
     doc = fitz.open(pdf)
     try:
@@ -212,6 +229,13 @@ def parse_pdf(pdf: Path, pedido: str, uf: str) -> dict | None:
 
     points.sort(key=lambda p: p["t"])
     pontos_originais = len(points)
+    pontos_cortados_inicio = 0
+    if uf == "MS" and CORTE_INICIO_MS:
+        hora, minuto = CORTE_INICIO_MS
+        points, pontos_cortados_inicio = cortar_inicio_apos_horario(points, hora, minuto)
+    if len(points) < 2:
+        return None
+
     points, pontos_cortados = cortar_pos_entrega(points)
     if len(points) < 2:
         return None
@@ -228,7 +252,9 @@ def parse_pdf(pdf: Path, pedido: str, uf: str) -> dict | None:
         "pontos": metricas["pontos"],
         "pontos_originais": pontos_originais,
         "pontos_cortados": pontos_cortados,
+        "pontos_cortados_inicio": pontos_cortados_inicio,
         "cortado_entrega": pontos_cortados > 0,
+        "cortado_inicio_ms": pontos_cortados_inicio > 0,
         "temp_min": metricas["temp_min"],
         "temp_max": metricas["temp_max"],
         "temp_media": metricas["temp_media"],
@@ -320,6 +346,13 @@ def render_html(series: list[dict], gerado_em: str) -> str:
     n_ok = contar_ok(series)
     n_fora = n_loggers - n_ok
     pct_ok = round(100 * n_ok / n_loggers) if n_loggers else 0
+    nota_ms = ""
+    if CORTE_INICIO_MS:
+        h, mi = CORTE_INICIO_MS
+        nota_ms = (
+            f'<div class="faixa">Pedidos MS: análise inicia após '
+            f'{h:02d}:{mi:02d} do primeiro dia.</div>'
+        )
 
     return f"""<!doctype html>
 <html lang="pt-BR">
@@ -938,6 +971,7 @@ def render_html(series: list[dict], gerado_em: str) -> str:
       <strong>OK</strong> = mínima e máxima dentro da faixa refrigerada.
       <strong>Fora</strong> = algum valor saiu da faixa.
       <div class="faixa">Faixa aceita: {FAIXA_MIN}°C a {FAIXA_MAX}°C</div>
+      {nota_ms}
     </div>
 
     <div class="hero-kpis">
@@ -1496,9 +1530,14 @@ def main() -> int:
     pedidos = sorted({s["pedido"] for s in series})
     ok = contar_ok(series)
     cortados = [s for s in series if s.get("cortado_entrega")]
+    cortados_inicio = [s for s in series if s.get("cortado_inicio_ms")]
     print(f"Loggers: {len(series)}")
     print(f"Pedidos: {len(pedidos)} ({', '.join(pedidos)})")
     print(f"OK: {ok} | Fora: {len(series) - ok}")
+    if cortados_inicio:
+        print(f"Cortados inicio MS (11:20): {len(cortados_inicio)}")
+        for s in cortados_inicio:
+            print(f"  {s['pedido']}/{s['uf']}/{s['logger']}: -{s['pontos_cortados_inicio']} pts (inicio {s['inicio']})")
     if cortados:
         print(f"Cortados pos-entrega: {len(cortados)}")
         for s in cortados:
