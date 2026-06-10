@@ -10,8 +10,17 @@ from pathlib import Path
 import fitz
 import pandas as pd
 
-PASTA = Path(__file__).resolve().parent
-XLSX_PADRAO = PASTA.parent / "Base.xlsx"
+
+def _resolve_pasta() -> Path:
+    for arg in sys.argv[1:]:
+        p = Path(arg)
+        if p.is_dir():
+            return p.resolve()
+    return Path(__file__).resolve().parent
+
+
+PASTA = _resolve_pasta()
+XLSX_PADRAO = PASTA / "Base.xlsx"
 LOG = PASTA / "_renomeacao_log.csv"
 PAT_LOGGER = re.compile(r"Nome do dispositivo:\s*([A-Z][A-Z0-9]+)", re.I)
 PAT_JA = re.compile(r"^\d+_[A-Z][A-Z0-9]+_[A-Z]{2}(_\d+)?\.pdf$", re.I)
@@ -25,11 +34,12 @@ def norm_logger(value) -> str:
 
 
 def find_xlsx() -> Path | None:
-    if len(sys.argv) > 1:
-        arg = Path(sys.argv[1])
-        return arg if arg.is_file() else None
     if XLSX_PADRAO.is_file():
         return XLSX_PADRAO
+    for arg in sys.argv[1:]:
+        p = Path(arg)
+        if p.is_file() and p.suffix.lower() == ".xlsx":
+            return p
     candidatos = [
         p
         for p in PASTA.parent.glob("*.xlsx")
@@ -49,14 +59,19 @@ def load_lookup(xlsx: Path) -> dict[str, tuple[str, str]]:
     sheet = "com_lpn" if "com_lpn" in xl.sheet_names else xl.sheet_names[0]
     df = pd.read_excel(xlsx, sheet_name=sheet)
     cols = {str(c).strip().lower(): c for c in df.columns}
+    pedido_col = next((cols[k] for k in cols if "pedido" in k), cols.get("pedido"))
+    logger_col = next((cols[k] for k in cols if "logger" in k), cols.get("logger"))
+    uf_col = cols.get("uf")
 
     lookup: dict[str, tuple[str, str]] = {}
     for _, row in df.iterrows():
-        logger = norm_logger(row.get(cols.get("logger", "logger"), ""))
+        logger = norm_logger(row.get(logger_col, ""))
         if not logger or logger in lookup:
             continue
-        pedido = str(row.get(cols.get("pedido", "pedido"), "")).strip()
-        uf = str(row.get(cols.get("uf", "uf"), "")).strip().upper()
+        pedido = str(row.get(pedido_col, "")).strip()
+        if pedido.endswith(".0"):
+            pedido = pedido[:-2]
+        uf = str(row.get(uf_col, "")).strip().upper()
         lookup[logger] = (pedido, uf)
     return lookup
 

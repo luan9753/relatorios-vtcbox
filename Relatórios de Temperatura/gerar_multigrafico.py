@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 import statistics
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -13,6 +14,9 @@ import pandas as pd
 PASTA = Path(__file__).resolve().parent
 OUT_HTML = PASTA / "multigrafico_todos.html"
 XLSX_BASE = PASTA / "Base.xlsx"
+PAINEL_TITULO = "Temperatura VTCBOX — Painel Executivo"
+PAINEL_BRAND = "VTCBOX · Caixa Nova"
+PAINEL_H1 = "Painel de Temperatura"
 PADRAO_PDF = re.compile(r"^(\d+)_([A-Z][A-Z0-9]+)_([A-Z]{2})(_\d+)?\.pdf$", re.I)
 PAT_LOGGER = re.compile(r"Nome do dispositivo:\s*([A-Z][A-Z0-9]+)", re.I)
 PAT_MIN = re.compile(r"Temperatura m[ií]nima:\s*([-\d.]+)", re.I)
@@ -23,6 +27,30 @@ FAIXA_MIN = 2.0
 FAIXA_MAX = 8.0
 SALTO_MIN_C = 2.0
 JANELA_ESTAVEL = 20
+
+
+def aplicar_pasta(pasta: Path) -> None:
+    global PASTA, OUT_HTML, XLSX_BASE, PAINEL_TITULO, PAINEL_BRAND, PAINEL_H1
+    PASTA = pasta.resolve()
+    XLSX_BASE = PASTA / "Base.xlsx"
+    if "130l" in pasta.name.lower():
+        OUT_HTML = PASTA / "multigrafico_130l_normal.html"
+        PAINEL_TITULO = "Caixa VTCBOX 130L Normal — Temperatura"
+        PAINEL_BRAND = "VTCBOX · 130L Normal"
+        PAINEL_H1 = "Painel Caixa 130L Normal"
+    else:
+        OUT_HTML = PASTA / "multigrafico_todos.html"
+        PAINEL_TITULO = "Temperatura VTCBOX — Painel Executivo"
+        PAINEL_BRAND = "VTCBOX · Caixa Nova"
+        PAINEL_H1 = "Painel de Temperatura"
+
+
+def _col(cols: dict[str, str], *partes: str) -> str | None:
+    for parte in partes:
+        hit = next((cols[k] for k in cols if parte in k), None)
+        if hit:
+            return hit
+    return None
 
 
 def _norm_logger(value) -> str:
@@ -70,14 +98,17 @@ def carregar_metadados_base() -> dict[tuple[str, str, str], dict[str, str | None
         return {}
     df = pd.read_excel(XLSX_BASE)
     cols = {str(c).strip().lower(): c for c in df.columns}
-    coleta_col = next((cols[k] for k in cols if "coleta" in k), None)
-    entrega_col = next((cols[k] for k in cols if "entrega" in k), None)
-    modal_col = next((cols[k] for k in cols if "modal" in k), None)
+    pedido_col = _col(cols, "pedido")
+    logger_col = _col(cols, "logger")
+    uf_col = _col(cols, "uf")
+    coleta_col = _col(cols, "coleta")
+    entrega_col = _col(cols, "entrega")
+    modal_col = _col(cols, "modal")
     lookup: dict[tuple[str, str, str], dict[str, str | None]] = {}
     for _, row in df.iterrows():
-        pedido = _norm_pedido(row.get(cols.get("pedido", "pedido")))
-        logger = _norm_logger(row.get(cols.get("logger", "logger")))
-        uf = _norm_uf(row.get(cols.get("uf", "uf")))
+        pedido = _norm_pedido(row.get(pedido_col)) if pedido_col else ""
+        logger = _norm_logger(row.get(logger_col)) if logger_col else ""
+        uf = _norm_uf(row.get(uf_col)) if uf_col else ""
         if not pedido or not logger or not uf:
             continue
         lookup[(pedido, logger, uf)] = {
@@ -297,7 +328,7 @@ def render_html(series: list[dict], gerado_em: str) -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0b0f14" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <title>Temperatura VTCBOX — Painel Executivo</title>
+  <title>{PAINEL_TITULO}</title>
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <style>
     :root {{
@@ -895,8 +926,8 @@ def render_html(series: list[dict], gerado_em: str) -> str:
 <body>
   <header class="topbar">
     <div class="topbar-inner">
-      <div class="brand">VTCBOX · Caixa Nova</div>
-      <h1>Painel de Temperatura</h1>
+      <div class="brand">{PAINEL_BRAND}</div>
+      <h1>{PAINEL_H1}</h1>
       <div class="sub">Atualizado em {gerado_em}</div>
     </div>
   </header>
@@ -1447,6 +1478,12 @@ def render_html(series: list[dict], gerado_em: str) -> str:
 
 
 def main() -> int:
+    for arg in sys.argv[1:]:
+        p = Path(arg)
+        if p.is_dir():
+            aplicar_pasta(p)
+            break
+
     series = carregar_series()
     if not series:
         print(f"Nenhum PDF encontrado em pastas Pedido_* em {PASTA}")
