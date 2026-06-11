@@ -96,10 +96,29 @@ def _norm_modal(value) -> str:
     return s if s and s.upper() not in {"NAN", "NONE"} else "Sem modal"
 
 
+def carregar_dataframe_base() -> pd.DataFrame | None:
+    candidatos: list[Path] = []
+    for nome in ("base2.xlsx", "Base.xlsx", "Base.csv"):
+        p = PASTA / nome
+        if p.is_file():
+            candidatos.append(p)
+    if not candidatos:
+        return None
+    arquivo = max(candidatos, key=lambda p: p.stat().st_mtime)
+    if arquivo.suffix.lower() == ".csv":
+        for sep, enc in ((";", "latin-1"), (";", "utf-8-sig"), (",", "utf-8-sig")):
+            try:
+                return pd.read_csv(arquivo, sep=sep, encoding=enc)
+            except Exception:
+                continue
+        return pd.read_csv(arquivo, sep=None, engine="python", encoding="latin-1")
+    return pd.read_excel(arquivo)
+
+
 def carregar_metadados_base() -> dict[tuple[str, str, str], dict[str, str | None]]:
-    if not XLSX_BASE.is_file():
+    df = carregar_dataframe_base()
+    if df is None:
         return {}
-    df = pd.read_excel(XLSX_BASE)
     cols = {str(c).strip().lower(): c for c in df.columns}
     pedido_col = _col(cols, "pedido")
     logger_col = _col(cols, "logger")
@@ -346,6 +365,9 @@ def render_html(series: list[dict], gerado_em: str) -> str:
     n_ok = contar_ok(series)
     n_fora = n_loggers - n_ok
     pct_ok = round(100 * n_ok / n_loggers) if n_loggers else 0
+    datas_coleta = sorted({s["data_coleta"][:10] for s in series if s.get("data_coleta")})
+    coleta_min = datas_coleta[0] if datas_coleta else ""
+    coleta_max = datas_coleta[-1] if datas_coleta else ""
     nota_ms = ""
     if CORTE_INICIO_MS:
         h, mi = CORTE_INICIO_MS
@@ -944,7 +966,7 @@ def render_html(series: list[dict], gerado_em: str) -> str:
       .filtros-body.open {{ display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }}
       .filtros-body.open .btn {{ grid-column: 1 / -1; }}
       .filtros-toggle {{ display: none; }}
-      .filtros-body {{ display: grid !important; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }}
+      .filtros-body {{ display: grid !important; grid-template-columns: repeat(3, 1fr); gap: 10px; }}
       .filtros-body .btn {{ grid-column: 1 / -1; max-width: 240px; }}
       .bottom-nav {{ display: none; }}
       body {{ padding-bottom: 20px; }}
@@ -1036,6 +1058,14 @@ def render_html(series: list[dict], gerado_em: str) -> str:
           <div class="field">
             <label>Modal</label>
             <select id="filtro-modal"><option value="">Todos os modais</option></select>
+          </div>
+          <div class="field">
+            <label>Coleta de</label>
+            <input type="date" id="filtro-coleta-ini" min="{coleta_min}" max="{coleta_max}" />
+          </div>
+          <div class="field">
+            <label>Coleta até</label>
+            <input type="date" id="filtro-coleta-fim" min="{coleta_min}" max="{coleta_max}" />
           </div>
           <div class="field">
             <label>Buscar</label>
@@ -1150,11 +1180,25 @@ def render_html(series: list[dict], gerado_em: str) -> str:
       return v == null ? "—" : v.toFixed(1) + "°C";
     }}
 
+    function diaColeta(s) {{
+      if (!s.data_coleta) return "";
+      return String(s.data_coleta).slice(0, 10);
+    }}
+
+    function fmtDataColeta(s) {{
+      const d = diaColeta(s);
+      if (!d) return "—";
+      const [y, m, day] = d.split("-");
+      return `${{day}}/${{m}}/${{y}}`;
+    }}
+
     function getFiltros() {{
       return {{
         pedido: document.getElementById("filtro-pedido").value,
         uf: document.getElementById("filtro-uf").value,
         modal: document.getElementById("filtro-modal").value,
+        coletaIni: document.getElementById("filtro-coleta-ini").value,
+        coletaFim: document.getElementById("filtro-coleta-fim").value,
         status: statusChip,
         busca: document.getElementById("busca-grid").value.trim().toUpperCase(),
       }};
@@ -1170,6 +1214,12 @@ def render_html(series: list[dict], gerado_em: str) -> str:
         if (f.pedido && s.pedido !== f.pedido) return false;
         if (f.uf && s.uf !== f.uf) return false;
         if (f.modal && (s.modal || "Sem modal") !== f.modal) return false;
+        if (f.coletaIni || f.coletaFim) {{
+          const dia = diaColeta(s);
+          if (!dia) return false;
+          if (f.coletaIni && dia < f.coletaIni) return false;
+          if (f.coletaFim && dia > f.coletaFim) return false;
+        }}
         if (f.status === "ok" && !conforme(s)) return false;
         if (f.status === "fora" && conforme(s)) return false;
         if (f.busca) {{
@@ -1334,7 +1384,7 @@ def render_html(series: list[dict], gerado_em: str) -> str:
             <div>
               <div class="card-pedido">Pedido ${{s.pedido}}<span class="card-uf">${{s.uf}}</span></div>
               <div class="card-logger">${{s.logger}}</div>
-              <div class="card-temps">${{s.modal || "Sem modal"}} · Mín ${{fmtTemp(s.temp_min)}} · Máx ${{fmtTemp(s.temp_max)}}</div>
+              <div class="card-temps">${{s.modal || "Sem modal"}} · Coleta ${{fmtDataColeta(s)}} · Mín ${{fmtTemp(s.temp_min)}} · Máx ${{fmtTemp(s.temp_max)}}</div>
             </div>
             <span class="badge ${{ok ? "ok" : "warn"}}">${{ok ? "OK" : "FORA"}}</span>
           </div>
@@ -1482,7 +1532,7 @@ def render_html(series: list[dict], gerado_em: str) -> str:
       body.classList.toggle("open");
     }});
 
-    ["filtro-pedido", "filtro-uf", "filtro-modal"].forEach(id => {{
+    ["filtro-pedido", "filtro-uf", "filtro-modal", "filtro-coleta-ini", "filtro-coleta-fim"].forEach(id => {{
       document.getElementById(id).addEventListener("change", renderGrid);
     }});
     document.getElementById("busca-grid").addEventListener("input", renderGrid);
@@ -1490,6 +1540,8 @@ def render_html(series: list[dict], gerado_em: str) -> str:
       document.getElementById("filtro-pedido").value = "";
       document.getElementById("filtro-uf").value = "";
       document.getElementById("filtro-modal").value = "";
+      document.getElementById("filtro-coleta-ini").value = "";
+      document.getElementById("filtro-coleta-fim").value = "";
       document.getElementById("busca-grid").value = "";
       statusChip = "";
       document.querySelectorAll("#chips-status .chip").forEach((c, i) => c.classList.toggle("active", i === 0));
