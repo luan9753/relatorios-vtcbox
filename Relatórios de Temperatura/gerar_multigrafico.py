@@ -790,6 +790,39 @@ def render_html(series: list[dict], gerado_em: str) -> str:
     .chip.active {{ background: var(--navy-soft); color: #fff; border-color: var(--accent); }}
     .chip.ok.active {{ background: var(--ok); border-color: var(--ok); }}
     .chip.warn.active {{ background: var(--warn); border-color: var(--warn); }}
+    .field-full {{ grid-column: 1 / -1; }}
+    .chips-excluir {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      max-height: 160px;
+      overflow-y: auto;
+      padding: 2px 0;
+    }}
+    .chip-excluir {{
+      min-height: 36px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      font-size: .8rem;
+      font-weight: 600;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all .15s;
+    }}
+    .chip-excluir.active {{
+      background: rgba(248, 113, 113, .15);
+      border-color: #f87171;
+      color: #fca5a5;
+      text-decoration: line-through;
+    }}
+    .field label .hint {{
+      font-weight: 500;
+      text-transform: none;
+      letter-spacing: 0;
+      opacity: .85;
+    }}
     .field {{ margin-bottom: 10px; }}
     .field label {{
       display: block;
@@ -1105,6 +1138,10 @@ def render_html(series: list[dict], gerado_em: str) -> str:
             <label>Buscar</label>
             <input type="search" id="busca-grid" placeholder="Pedido, UF ou logger..." enterkeyhint="search" />
           </div>
+          <div class="field field-full">
+            <label>Ignorar pedidos <span class="hint">(clique para ocultar do painel)</span></label>
+            <div class="chips-excluir" id="chips-excluir-pedidos"></div>
+          </div>
           <button class="btn btn-ghost" id="btn-limpar-filtros" type="button">Limpar filtros</button>
         </div>
       </div>
@@ -1158,6 +1195,7 @@ def render_html(series: list[dict], gerado_em: str) -> str:
     const chartsRendered = new Set();
     let statusChip = "";
     let chartObserver = null;
+    const pedidosIgnorados = new Set();
 
     const layoutBase = {{
       paper_bgcolor: "#0f172a",
@@ -1245,6 +1283,7 @@ def render_html(series: list[dict], gerado_em: str) -> str:
     function filtrarDados() {{
       const f = getFiltros();
       return DATA.filter(s => {{
+        if (pedidosIgnorados.has(s.pedido)) return false;
         if (f.pedido && s.pedido !== f.pedido) return false;
         if (f.uf && s.uf !== f.uf) return false;
         if (f.modal && (s.modal || "Sem modal") !== f.modal) return false;
@@ -1401,6 +1440,8 @@ def render_html(series: list[dict], gerado_em: str) -> str:
       const lista = filtrarDados();
       atualizarKpis(lista);
       renderDonutsModal(lista);
+      atualizarDetalheSelect(lista);
+      atualizarComparativoVisivel();
       const grid = document.getElementById("grid-mini");
       grid.innerHTML = "";
       if (!lista.length) {{
@@ -1511,15 +1552,51 @@ def render_html(series: list[dict], gerado_em: str) -> str:
         opt.value = m; opt.textContent = m;
         document.getElementById("filtro-modal").appendChild(opt);
       }});
+      const box = document.getElementById("chips-excluir-pedidos");
+      PEDIDOS.forEach(p => {{
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "chip-excluir";
+        btn.dataset.pedido = p;
+        btn.textContent = p;
+        btn.title = "Ignorar pedido " + p;
+        btn.addEventListener("click", () => {{
+          if (pedidosIgnorados.has(p)) {{
+            pedidosIgnorados.delete(p);
+            btn.classList.remove("active");
+          }} else {{
+            pedidosIgnorados.add(p);
+            btn.classList.add("active");
+          }}
+          renderGrid();
+        }});
+        box.appendChild(btn);
+      }});
+    }}
+
+    function atualizarDetalheSelect(lista) {{
+      const sel = document.getElementById("sel-detalhe");
+      const atual = sel.value;
+      sel.innerHTML = "";
+      lista.forEach(s => {{
+        const opt = document.createElement("option");
+        opt.value = s.id;
+        opt.textContent = labelItem(s);
+        sel.appendChild(opt);
+      }});
+      if (lista.some(s => s.id === atual)) {{
+        sel.value = atual;
+      }} else if (lista.length) {{
+        sel.value = lista[0].id;
+        renderDetalhe(lista[0].id);
+      }} else {{
+        Plotly.purge("chart-detalhe");
+        document.getElementById("detalhe-info").innerHTML = "";
+      }}
     }}
 
     function popularDetalhe() {{
       const sel = document.getElementById("sel-detalhe");
-      DATA.forEach(s => {{
-        const opt = document.createElement("option");
-        opt.value = s.id; opt.textContent = labelItem(s);
-        sel.appendChild(opt);
-      }});
       sel.addEventListener("change", () => renderDetalhe(sel.value));
     }}
 
@@ -1529,6 +1606,7 @@ def render_html(series: list[dict], gerado_em: str) -> str:
         const ok = conforme(s);
         const row = document.createElement("label");
         row.className = "logger-item";
+        row.dataset.pedido = s.pedido;
         row.innerHTML = `
           <input type="checkbox" value="${{s.id}}">
           <span><strong>${{s.logger}}</strong><br><small style="color:var(--muted)">Pedido ${{s.pedido}} · ${{s.uf}}</small></span>
@@ -1544,6 +1622,14 @@ def render_html(series: list[dict], gerado_em: str) -> str:
           renderComparativo();
         }});
         lista.appendChild(row);
+      }});
+    }}
+
+    function atualizarComparativoVisivel() {{
+      document.querySelectorAll("#lista-comp .logger-item").forEach(row => {{
+        const hide = pedidosIgnorados.has(row.dataset.pedido);
+        row.style.display = hide ? "none" : "";
+        if (hide) row.querySelector("input").checked = false;
       }});
     }}
 
@@ -1577,6 +1663,8 @@ def render_html(series: list[dict], gerado_em: str) -> str:
       document.getElementById("filtro-coleta-ini").value = "";
       document.getElementById("filtro-coleta-fim").value = "";
       document.getElementById("busca-grid").value = "";
+      pedidosIgnorados.clear();
+      document.querySelectorAll(".chip-excluir").forEach(c => c.classList.remove("active"));
       statusChip = "";
       document.querySelectorAll("#chips-status .chip").forEach((c, i) => c.classList.toggle("active", i === 0));
       renderGrid();
@@ -1590,7 +1678,7 @@ def render_html(series: list[dict], gerado_em: str) -> str:
     popularDetalhe();
     popularComparativo();
     renderGrid();
-    if (DATA.length) renderDetalhe(DATA[0].id);
+    if (filtrarDados().length) renderDetalhe(filtrarDados()[0].id);
   </script>
 </body>
 </html>
