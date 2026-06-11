@@ -40,7 +40,7 @@ def find_xlsx() -> Path | None:
             return p
     candidatos = [
         PASTA / nome
-        for nome in ("base2.xlsx", "Base.xlsx", "Base.csv")
+        for nome in ("base3.xlsx", "base2.xlsx", "Base.xlsx", "Base.csv")
         if (PASTA / nome).is_file()
     ]
     if not candidatos:

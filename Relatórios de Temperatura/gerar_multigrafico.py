@@ -102,7 +102,7 @@ def _norm_modal(value) -> str:
 
 def carregar_dataframe_base() -> pd.DataFrame | None:
     candidatos: list[Path] = []
-    for nome in ("base2.xlsx", "Base.xlsx", "Base.csv"):
+    for nome in ("base3.xlsx", "base2.xlsx", "Base.xlsx", "Base.csv"):
         p = PASTA / nome
         if p.is_file():
             candidatos.append(p)
