@@ -34,30 +34,35 @@ def norm_logger(value) -> str:
 
 
 def find_xlsx() -> Path | None:
-    if XLSX_PADRAO.is_file():
-        return XLSX_PADRAO
     for arg in sys.argv[1:]:
         p = Path(arg)
-        if p.is_file() and p.suffix.lower() == ".xlsx":
+        if p.is_file() and p.suffix.lower() in {".xlsx", ".csv"}:
             return p
     candidatos = [
-        p
-        for p in PASTA.parent.glob("*.xlsx")
-        if not p.name.startswith("~$")
-        and not p.name.startswith("_")
-        and "por_pedido" not in p.name.lower()
+        PASTA / nome
+        for nome in ("base2.xlsx", "Base.xlsx", "Base.csv")
+        if (PASTA / nome).is_file()
     ]
     if not candidatos:
         return None
-    preferidos = [p for p in candidatos if p.name.lower() in {"base.xlsx", "vtcbox_130l_analitico.xlsx"}]
-    pool = preferidos or candidatos
-    return max(pool, key=lambda p: p.stat().st_mtime)
+    return max(candidatos, key=lambda p: p.stat().st_mtime)
+
+
+def _ler_base(base: Path) -> pd.DataFrame:
+    if base.suffix.lower() == ".csv":
+        for sep, enc in ((";", "latin-1"), (";", "utf-8-sig"), (",", "utf-8-sig")):
+            try:
+                return pd.read_csv(base, sep=sep, encoding=enc)
+            except Exception:
+                continue
+        return pd.read_csv(base, sep=None, engine="python", encoding="latin-1")
+    xl = pd.ExcelFile(base)
+    sheet = "com_lpn" if "com_lpn" in xl.sheet_names else xl.sheet_names[0]
+    return pd.read_excel(base, sheet_name=sheet)
 
 
 def load_lookup(xlsx: Path) -> dict[str, tuple[str, str]]:
-    xl = pd.ExcelFile(xlsx)
-    sheet = "com_lpn" if "com_lpn" in xl.sheet_names else xl.sheet_names[0]
-    df = pd.read_excel(xlsx, sheet_name=sheet)
+    df = _ler_base(xlsx)
     cols = {str(c).strip().lower(): c for c in df.columns}
     pedido_col = next((cols[k] for k in cols if "pedido" in k), cols.get("pedido"))
     logger_col = next((cols[k] for k in cols if "logger" in k), cols.get("logger"))
