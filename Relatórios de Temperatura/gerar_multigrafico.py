@@ -29,6 +29,9 @@ SALTO_MIN_C = 2.0
 JANELA_ESTAVEL = 20
 CORTE_INICIO_HORAS = 3.0
 CORTE_INICIO_MS: tuple[int, int] | None = None
+CLIMATIZADO_MIN = 15.0
+CLIMATIZADO_MAX = 30.0
+IGNORADOS_CLIMATIZADO: list[dict[str, str]] = []
 
 
 def aplicar_pasta(pasta: Path) -> None:
@@ -210,6 +213,13 @@ def cortar_inicio_horas(points: list[dict], horas: float = CORTE_INICIO_HORAS) -
     return filtrados, len(points) - len(filtrados)
 
 
+def totalmente_climatizado(points: list[dict]) -> bool:
+    """True se 100% das leituras ficaram na faixa ambiente/climatizada."""
+    if not points:
+        return False
+    return all(CLIMATIZADO_MIN <= p["temp"] <= CLIMATIZADO_MAX for p in points)
+
+
 def cortar_inicio_apos_horario(
     points: list[dict], hora: int, minuto: int
 ) -> tuple[list[dict], int]:
@@ -267,6 +277,12 @@ def parse_pdf(pdf: Path, pedido: str, uf: str) -> dict | None:
 
     points, pontos_cortados = cortar_pos_entrega(points)
     if len(points) < 2:
+        return None
+
+    if totalmente_climatizado(points):
+        IGNORADOS_CLIMATIZADO.append(
+            {"pedido": pedido, "uf": uf, "logger": logger, "arquivo": pdf.name}
+        )
         return None
 
     metricas = recalcular_metricas(points)
@@ -329,6 +345,7 @@ def _prioridade_pdf(item: dict) -> tuple:
 
 
 def carregar_series() -> list[dict]:
+    IGNORADOS_CLIMATIZADO.clear()
     metadados = carregar_metadados_base()
     por_id: dict[str, dict] = {}
     for pdf, pedido, uf in coletar_pdfs():
@@ -381,6 +398,8 @@ def render_html(series: list[dict], gerado_em: str) -> str:
     nota_corte = (
         f'<div class="faixa">Análise inicia após as {int(CORTE_INICIO_HORAS)} '
         f'primeiras horas do trajeto.</div>'
+        f'<div class="faixa">Relatórios 100% climatizados ({CLIMATIZADO_MIN:g}°C a '
+        f'{CLIMATIZADO_MAX:g}°C) são ignorados.</div>'
     )
     nota_ms = ""
     if CORTE_INICIO_MS:
@@ -1603,6 +1622,10 @@ def main() -> int:
     print(f"OK: {ok} | Fora: {len(series) - ok}")
     if cortados_inicio:
         print(f"Cortados inicio ({int(CORTE_INICIO_HORAS)}h): {len(cortados_inicio)}")
+    if IGNORADOS_CLIMATIZADO:
+        print(f"Ignorados 100% climatizados ({CLIMATIZADO_MIN:g}-{CLIMATIZADO_MAX:g}C): {len(IGNORADOS_CLIMATIZADO)}")
+        for s in IGNORADOS_CLIMATIZADO:
+            print(f"  {s['pedido']}/{s['uf']}/{s['logger']}")
     if cortados:
         print(f"Cortados pos-entrega: {len(cortados)}")
         for s in cortados:
