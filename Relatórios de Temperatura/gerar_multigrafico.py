@@ -34,6 +34,9 @@ CORTE_INICIO_MS: tuple[int, int] | None = None
 CLIMATIZADO_MIN = 15.0
 CLIMATIZADO_MAX = 30.0
 IGNORADOS_CLIMATIZADO: list[dict[str, str]] = []
+COLETA_PEDIDO: dict[str, str] = {
+    "556135": "2026-06-10 21:31:00",
+}
 
 
 def aplicar_pasta(pasta: Path) -> None:
@@ -436,7 +439,7 @@ def carregar_series() -> list[dict]:
         if not item:
             continue
         extra = metadados.get((pedido, item["logger"], uf), {})
-        item["data_coleta"] = extra.get("data_coleta")
+        item["data_coleta"] = COLETA_PEDIDO.get(pedido) or extra.get("data_coleta")
         item["data_entrega"] = extra.get("data_entrega")
         item["modal"] = extra.get("modal") or "Sem modal"
         candidatos[item["id"]] = data_candidata_inclusao(
