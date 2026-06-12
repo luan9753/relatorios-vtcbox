@@ -14,6 +14,8 @@ import pandas as pd
 PASTA = Path(__file__).resolve().parent
 OUT_HTML = PASTA / "multigrafico_todos.html"
 XLSX_BASE = PASTA / "Base.xlsx"
+MANIFEST_INCLUSAO = PASTA / "_inclusao_manifest.json"
+LOG_RENOMEACAO = PASTA / "_renomeacao_log.csv"
 PAINEL_TITULO = "Temperatura VTCBOX — Painel Executivo"
 PAINEL_BRAND = "VTCBOX · Caixa Nova"
 PAINEL_H1 = "Painel de Temperatura"
@@ -36,8 +38,11 @@ IGNORADOS_CLIMATIZADO: list[dict[str, str]] = []
 
 def aplicar_pasta(pasta: Path) -> None:
     global PASTA, OUT_HTML, XLSX_BASE, PAINEL_TITULO, PAINEL_BRAND, PAINEL_H1, CORTE_INICIO_MS
+    global MANIFEST_INCLUSAO, LOG_RENOMEACAO
     PASTA = pasta.resolve()
     XLSX_BASE = PASTA / "Base.xlsx"
+    MANIFEST_INCLUSAO = PASTA / "_inclusao_manifest.json"
+    LOG_RENOMEACAO = PASTA / "_renomeacao_log.csv"
     if "130l" in pasta.name.lower():
         OUT_HTML = PASTA / "multigrafico_130l_normal.html"
         PAINEL_TITULO = "Caixa VTCBOX 130L Normal — Temperatura"
@@ -145,8 +150,84 @@ def carregar_metadados_base() -> dict[tuple[str, str, str], dict[str, str | None
     return lookup
 
 
+def carregar_manifest_inclusao() -> dict[str, str]:
+    if not MANIFEST_INCLUSAO.is_file():
+        return {}
+    try:
+        return json.loads(MANIFEST_INCLUSAO.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def salvar_manifest_inclusao(manifest: dict[str, str]) -> None:
+    MANIFEST_INCLUSAO.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def carregar_datas_renomeacao() -> dict[tuple[str, str, str], str]:
+    if not LOG_RENOMEACAO.is_file():
+        return {}
+    try:
+        df = pd.read_csv(LOG_RENOMEACAO, sep=";", encoding="utf-8-sig")
+    except Exception:
+        return {}
+    cols = {str(c).strip().lower(): c for c in df.columns}
+    pedido_col = _col(cols, "pedido")
+    logger_col = _col(cols, "logger")
+    uf_col = _col(cols, "uf")
+    quando_col = _col(cols, "executado")
+    status_col = _col(cols, "status")
+    if not all([pedido_col, logger_col, uf_col, quando_col]):
+        return {}
+    datas: dict[tuple[str, str, str], str] = {}
+    for _, row in df.iterrows():
+        if status_col and str(row.get(status_col, "")).strip().lower() not in {"", "renomeado"}:
+            continue
+        pedido = _norm_pedido(row.get(pedido_col))
+        logger = _norm_logger(row.get(logger_col))
+        uf = _norm_uf(row.get(uf_col))
+        quando = row.get(quando_col)
+        if not pedido or not logger or not uf or pd.isna(quando):
+            continue
+        ts = _parse_data(quando) or str(quando).strip()
+        chave = (pedido, logger, uf)
+        if chave not in datas or ts < datas[chave]:
+            datas[chave] = ts
+    return datas
+
+
+def data_candidata_inclusao(
+    pdf: Path, pedido: str, logger: str, uf: str, log_datas: dict[tuple[str, str, str], str]
+) -> str:
+    ts = log_datas.get((pedido, logger, uf))
+    if ts:
+        return ts
+    try:
+        return datetime.fromtimestamp(pdf.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+    except OSError:
+        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def aplicar_manifest_inclusao(series: list[dict], candidatos: dict[str, str]) -> None:
+    manifest = carregar_manifest_inclusao()
+    agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    primeiro_manifest = not manifest
+
+    for item in series:
+        cid = item["id"]
+        if primeiro_manifest:
+            manifest[cid] = candidatos.get(cid, agora)
+        elif cid not in manifest:
+            manifest[cid] = agora
+        item["data_inclusao"] = manifest[cid]
+
+    salvar_manifest_inclusao(manifest)
+
+
 def _chave_recente(item: dict) -> str:
-    return item.get("data_entrega") or item["fim"]
+    return item.get("data_coleta") or item.get("data_entrega") or item["fim"]
 
 
 def recalcular_metricas(points: list[dict]) -> dict:
@@ -347,6 +428,8 @@ def _prioridade_pdf(item: dict) -> tuple:
 def carregar_series() -> list[dict]:
     IGNORADOS_CLIMATIZADO.clear()
     metadados = carregar_metadados_base()
+    log_datas = carregar_datas_renomeacao()
+    candidatos: dict[str, str] = {}
     por_id: dict[str, dict] = {}
     for pdf, pedido, uf in coletar_pdfs():
         item = parse_pdf(pdf, pedido, uf)
@@ -356,10 +439,14 @@ def carregar_series() -> list[dict]:
         item["data_coleta"] = extra.get("data_coleta")
         item["data_entrega"] = extra.get("data_entrega")
         item["modal"] = extra.get("modal") or "Sem modal"
+        candidatos[item["id"]] = data_candidata_inclusao(
+            pdf, pedido, item["logger"], uf, log_datas
+        )
         key = item["id"]
         if key not in por_id or _prioridade_pdf(item) < _prioridade_pdf(por_id[key]):
             por_id[key] = item
     series = sorted(por_id.values(), key=_chave_recente, reverse=True)
+    aplicar_manifest_inclusao(series, candidatos)
     return series
 
 
@@ -400,6 +487,7 @@ def render_html(series: list[dict], gerado_em: str) -> str:
         f'primeiras horas do trajeto.</div>'
         f'<div class="faixa">Relatórios 100% climatizados ({CLIMATIZADO_MIN:g}°C a '
         f'{CLIMATIZADO_MAX:g}°C) são ignorados.</div>'
+        f'<div class="faixa">Data de inclusão = primeira vez que o logger entrou no painel.</div>'
     )
     nota_ms = ""
     if CORTE_INICIO_MS:
@@ -944,7 +1032,7 @@ def render_html(series: list[dict], gerado_em: str) -> str:
     #chart-detalhe, #chart-comparativo {{ width: 100%; min-height: 340px; }}
     .detalhe-info {{
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
       gap: 8px;
       margin-bottom: 12px;
     }}
@@ -1264,6 +1352,17 @@ def render_html(series: list[dict], gerado_em: str) -> str:
       return `${{day}}/${{m}}/${{y}}`;
     }}
 
+    function fmtDataInclusao(s) {{
+      if (!s.data_inclusao) return "—";
+      const raw = String(s.data_inclusao).replace(" ", "T");
+      const dt = new Date(raw);
+      if (Number.isNaN(dt.getTime())) return s.data_inclusao;
+      return dt.toLocaleString("pt-BR", {{
+        day: "2-digit", month: "2-digit", year: "numeric",
+        hour: "2-digit", minute: "2-digit",
+      }});
+    }}
+
     function getFiltros() {{
       return {{
         pedido: document.getElementById("filtro-pedido").value,
@@ -1277,7 +1376,7 @@ def render_html(series: list[dict], gerado_em: str) -> str:
     }}
 
     function chaveRecente(s) {{
-      return s.data_entrega || s.fim;
+      return s.data_coleta || s.data_entrega || s.fim;
     }}
 
     function filtrarDados() {{
@@ -1459,7 +1558,8 @@ def render_html(series: list[dict], gerado_em: str) -> str:
             <div>
               <div class="card-pedido">Pedido ${{s.pedido}}<span class="card-uf">${{s.uf}}</span></div>
               <div class="card-logger">${{s.logger}}</div>
-              <div class="card-temps">${{s.modal || "Sem modal"}} · Coleta ${{fmtDataColeta(s)}} · Mín ${{fmtTemp(s.temp_min)}} · Máx ${{fmtTemp(s.temp_max)}}</div>
+              <div class="card-temps">${{s.modal || "Sem modal"}} · Coleta ${{fmtDataColeta(s)}} · Incluído ${{fmtDataInclusao(s)}}</div>
+              <div class="card-temps">Mín ${{fmtTemp(s.temp_min)}} · Máx ${{fmtTemp(s.temp_max)}}</div>
             </div>
             <span class="badge ${{ok ? "ok" : "warn"}}">${{ok ? "OK" : "FORA"}}</span>
           </div>
@@ -1501,6 +1601,7 @@ def render_html(series: list[dict], gerado_em: str) -> str:
         <div class="det-box"><div class="v">${{fmtTemp(s.temp_min)}}</div><div class="l">Mínima</div></div>
         <div class="det-box"><div class="v">${{fmtTemp(s.temp_max)}}</div><div class="l">Máxima</div></div>
         <div class="det-box"><div class="v" style="color:${{ok ? "var(--ok)" : "var(--warn)"}}">${{ok ? "OK" : "FORA"}}</div><div class="l">Status</div></div>
+        <div class="det-box"><div class="v" style="font-size:1rem">${{fmtDataInclusao(s)}}</div><div class="l">Incluído no painel</div></div>
       `;
     }}
 
