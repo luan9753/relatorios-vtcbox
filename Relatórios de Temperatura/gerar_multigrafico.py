@@ -297,6 +297,20 @@ def cortar_inicio_horas(points: list[dict], horas: float = CORTE_INICIO_HORAS) -
     return filtrados, len(points) - len(filtrados)
 
 
+def cortar_inicio_desde_coleta(
+    points: list[dict], coleta: str, horas: float = CORTE_INICIO_HORAS
+) -> tuple[list[dict], int]:
+    """Descarta leituras anteriores à coleta + horas de estabilização."""
+    if not points or not coleta or horas <= 0:
+        return points, 0
+    inicio = datetime.strptime(coleta, "%Y-%m-%d %H:%M:%S")
+    limite = inicio + timedelta(hours=horas)
+    filtrados = [
+        p for p in points if datetime.strptime(p["t"], "%Y-%m-%d %H:%M:%S") >= limite
+    ]
+    return filtrados, len(points) - len(filtrados)
+
+
 def totalmente_climatizado(points: list[dict]) -> bool:
     """True se 100% das leituras ficaram na faixa ambiente/climatizada."""
     if not points:
@@ -318,7 +332,9 @@ def cortar_inicio_apos_horario(
     return filtrados, len(points) - len(filtrados)
 
 
-def parse_pdf(pdf: Path, pedido: str, uf: str) -> dict | None:
+def parse_pdf(
+    pdf: Path, pedido: str, uf: str, coleta: str | None = None
+) -> dict | None:
     doc = fitz.open(pdf)
     try:
         text = "".join(page.get_text() for page in doc)
@@ -355,7 +371,10 @@ def parse_pdf(pdf: Path, pedido: str, uf: str) -> dict | None:
 
     points.sort(key=lambda p: p["t"])
     pontos_originais = len(points)
-    points, pontos_cortados_inicio = cortar_inicio_horas(points)
+    if coleta:
+        points, pontos_cortados_inicio = cortar_inicio_desde_coleta(points, coleta)
+    else:
+        points, pontos_cortados_inicio = cortar_inicio_horas(points)
     if len(points) < 2:
         return None
 
@@ -435,7 +454,8 @@ def carregar_series() -> list[dict]:
     candidatos: dict[str, str] = {}
     por_id: dict[str, dict] = {}
     for pdf, pedido, uf in coletar_pdfs():
-        item = parse_pdf(pdf, pedido, uf)
+        coleta_ref = COLETA_PEDIDO.get(pedido)
+        item = parse_pdf(pdf, pedido, uf, coleta=coleta_ref)
         if not item:
             continue
         extra = metadados.get((pedido, item["logger"], uf), {})
@@ -498,6 +518,12 @@ def render_html(series: list[dict], gerado_em: str) -> str:
         nota_ms = (
             f'<div class="faixa">Pedidos MS: análise inicia após '
             f'{h:02d}:{mi:02d} do primeiro dia.</div>'
+        )
+    if COLETA_PEDIDO:
+        pedidos_coleta = ", ".join(sorted(COLETA_PEDIDO))
+        nota_ms += (
+            f'<div class="faixa">Pedidos {pedidos_coleta}: análise inicia '
+            f'{int(CORTE_INICIO_HORAS)}h após a data de coleta informada.</div>'
         )
 
     return f"""<!doctype html>
@@ -1349,9 +1375,14 @@ def render_html(series: list[dict], gerado_em: str) -> str:
     }}
 
     function fmtDataColeta(s) {{
-      const d = diaColeta(s);
-      if (!d) return "—";
-      const [y, m, day] = d.split("-");
+      if (!s.data_coleta) return "—";
+      const raw = String(s.data_coleta).trim();
+      const [data, hora] = raw.split(/[ T]/);
+      if (!data) return "—";
+      const [y, m, day] = data.split("-");
+      if (hora && hora.slice(0, 5) !== "00:00") {{
+        return `${{day}}/${{m}}/${{y}} ${{hora.slice(0, 5)}}`;
+      }}
       return `${{day}}/${{m}}/${{y}}`;
     }}
 
