@@ -40,7 +40,7 @@ def find_xlsx() -> Path | None:
             return p
     candidatos = [
         PASTA / nome
-        for nome in ("base3.xlsx", "base2.xlsx", "Base.xlsx", "Base.csv")
+        for nome in ("base3.xlsx", "base2.xlsx", "Base.xlsx", "base.xlsx", "Base.csv")
         if (PASTA / nome).is_file()
     ]
     if not candidatos:
@@ -65,8 +65,11 @@ def load_lookup(xlsx: Path) -> dict[str, tuple[str, str]]:
     df = _ler_base(xlsx)
     cols = {str(c).strip().lower(): c for c in df.columns}
     pedido_col = next((cols[k] for k in cols if "pedido" in k), cols.get("pedido"))
-    logger_col = next((cols[k] for k in cols if "logger" in k), cols.get("logger"))
-    uf_col = cols.get("uf")
+    logger_col = next(
+        (cols[k] for k in cols if "logger" in k or "referencia" in k),
+        cols.get("logger"),
+    )
+    uf_col = next((cols[k] for k in cols if k == "uf" or k.endswith("_uf")), cols.get("uf"))
 
     lookup: dict[str, tuple[str, str]] = {}
     for _, row in df.iterrows():

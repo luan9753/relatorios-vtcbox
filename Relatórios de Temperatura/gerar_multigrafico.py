@@ -46,7 +46,14 @@ def aplicar_pasta(pasta: Path) -> None:
     XLSX_BASE = PASTA / "Base.xlsx"
     MANIFEST_INCLUSAO = PASTA / "_inclusao_manifest.json"
     LOG_RENOMEACAO = PASTA / "_renomeacao_log.csv"
-    if "130l" in pasta.name.lower():
+    nome = pasta.name.lower()
+    if "10-05" in pasta.name or "apos 10" in nome.replace("ó", "o"):
+        OUT_HTML = PASTA / "multigrafico_130l_apos_1005.html"
+        PAINEL_TITULO = "Caixa VTCBOX 130L Após 10/05 — Temperatura"
+        PAINEL_BRAND = "VTCBOX · 130L Após 10/05"
+        PAINEL_H1 = "Painel Caixa 130L Após 10/05"
+        CORTE_INICIO_MS = None
+    elif "130l" in nome:
         OUT_HTML = PASTA / "multigrafico_130l_normal.html"
         PAINEL_TITULO = "Caixa VTCBOX 130L Normal — Temperatura"
         PAINEL_BRAND = "VTCBOX · 130L Normal"
@@ -110,7 +117,7 @@ def _norm_modal(value) -> str:
 
 def carregar_dataframe_base() -> pd.DataFrame | None:
     candidatos: list[Path] = []
-    for nome in ("base3.xlsx", "base2.xlsx", "Base.xlsx", "Base.csv"):
+    for nome in ("base3.xlsx", "base2.xlsx", "Base.xlsx", "base.xlsx", "Base.csv"):
         p = PASTA / nome
         if p.is_file():
             candidatos.append(p)
@@ -133,7 +140,7 @@ def carregar_metadados_base() -> dict[tuple[str, str, str], dict[str, str | None
         return {}
     cols = {str(c).strip().lower(): c for c in df.columns}
     pedido_col = _col(cols, "pedido")
-    logger_col = _col(cols, "logger")
+    logger_col = _col(cols, "logger", "referencia")
     uf_col = _col(cols, "uf")
     coleta_col = _col(cols, "coleta")
     entrega_col = _col(cols, "entrega")
@@ -178,7 +185,7 @@ def carregar_datas_renomeacao() -> dict[tuple[str, str, str], str]:
         return {}
     cols = {str(c).strip().lower(): c for c in df.columns}
     pedido_col = _col(cols, "pedido")
-    logger_col = _col(cols, "logger")
+    logger_col = _col(cols, "logger", "referencia")
     uf_col = _col(cols, "uf")
     quando_col = _col(cols, "executado")
     status_col = _col(cols, "status")
@@ -884,6 +891,16 @@ def render_html(series: list[dict], gerado_em: str) -> str:
     .filtros-toggle.open .chev {{ transform: rotate(180deg); }}
     .filtros-body {{ display: none; }}
     .filtros-body.open {{ display: block; }}
+    .filtros-top {{
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+      margin-bottom: 12px;
+    }}
+    .field-conformidade {{
+      flex: 1 1 180px;
+      margin-bottom: 0;
+    }}
     .chips {{
       display: flex;
       gap: 8px;
@@ -1221,15 +1238,20 @@ def render_html(series: list[dict], gerado_em: str) -> str:
 
     <section id="panel-individual" class="panel active">
       <div class="panel-card">
-        <div class="chips" id="chips-status">
-          <button class="chip active" data-status="">Todos</button>
-          <button class="chip ok" data-status="ok">Só OK</button>
-          <button class="chip warn" data-status="fora">Só Fora</button>
+        <div class="filtros-top">
+          <div class="field field-conformidade">
+            <label>Conformidade</label>
+            <select id="filtro-conformidade">
+              <option value="">Todos</option>
+              <option value="ok">Conforme</option>
+              <option value="fora">Não conforme</option>
+            </select>
+          </div>
+          <button class="filtros-toggle" id="btn-filtros" type="button">
+            <span>Filtros avançados</span>
+            <span class="chev">▼</span>
+          </button>
         </div>
-        <button class="filtros-toggle" id="btn-filtros" type="button">
-          <span>Filtros avançados</span>
-          <span class="chev">▼</span>
-        </button>
         <div class="filtros-body" id="filtros-body">
           <div class="field">
             <label>Pedido</label>
@@ -1310,7 +1332,6 @@ def render_html(series: list[dict], gerado_em: str) -> str:
       "#22d3ee","#f87171","#34d399","#c084fc","#fdba74","#86efac"
     ];
     const chartsRendered = new Set();
-    let statusChip = "";
     let chartObserver = null;
     const pedidosIgnorados = new Set();
 
@@ -1404,7 +1425,7 @@ def render_html(series: list[dict], gerado_em: str) -> str:
         modal: document.getElementById("filtro-modal").value,
         coletaIni: document.getElementById("filtro-coleta-ini").value,
         coletaFim: document.getElementById("filtro-coleta-fim").value,
-        status: statusChip,
+        status: document.getElementById("filtro-conformidade").value,
         busca: document.getElementById("busca-grid").value.trim().toUpperCase(),
       }};
     }}
@@ -1772,14 +1793,6 @@ def render_html(series: list[dict], gerado_em: str) -> str:
       btn.addEventListener("click", () => switchTab(btn.dataset.tab));
     }});
 
-    document.querySelectorAll("#chips-status .chip").forEach(chip => {{
-      chip.addEventListener("click", () => {{
-        statusChip = chip.dataset.status;
-        document.querySelectorAll("#chips-status .chip").forEach(c => c.classList.toggle("active", c === chip));
-        renderGrid();
-      }});
-    }});
-
     document.getElementById("btn-filtros").addEventListener("click", () => {{
       const btn = document.getElementById("btn-filtros");
       const body = document.getElementById("filtros-body");
@@ -1787,11 +1800,12 @@ def render_html(series: list[dict], gerado_em: str) -> str:
       body.classList.toggle("open");
     }});
 
-    ["filtro-pedido", "filtro-uf", "filtro-modal", "filtro-coleta-ini", "filtro-coleta-fim"].forEach(id => {{
+    ["filtro-conformidade", "filtro-pedido", "filtro-uf", "filtro-modal", "filtro-coleta-ini", "filtro-coleta-fim"].forEach(id => {{
       document.getElementById(id).addEventListener("change", renderGrid);
     }});
     document.getElementById("busca-grid").addEventListener("input", renderGrid);
     document.getElementById("btn-limpar-filtros").addEventListener("click", () => {{
+      document.getElementById("filtro-conformidade").value = "";
       document.getElementById("filtro-pedido").value = "";
       document.getElementById("filtro-uf").value = "";
       document.getElementById("filtro-modal").value = "";
@@ -1800,8 +1814,6 @@ def render_html(series: list[dict], gerado_em: str) -> str:
       document.getElementById("busca-grid").value = "";
       pedidosIgnorados.clear();
       document.querySelectorAll(".chip-excluir").forEach(c => c.classList.remove("active"));
-      statusChip = "";
-      document.querySelectorAll("#chips-status .chip").forEach((c, i) => c.classList.toggle("active", i === 0));
       renderGrid();
     }});
     document.getElementById("btn-limpar").addEventListener("click", () => {{
